@@ -116,7 +116,7 @@ async function work(userId: string, progress: (s: string) => Promise<unknown>, s
     if (!tmdbKey) throw new Error('No TMDB key set');
 
     const sources: Promise<Watch[]>[] = [];
-    if (cfg.secrets.nuvio) sources.push(nuvioHistory(userId, cfg.settings.nuvioProfile));
+    if (cfg.nuvioOwner) sources.push(nuvioHistory(cfg.nuvioOwner, cfg.settings.nuvioProfile));
     if (cfg.secrets.trakt) sources.push(traktHistory(userId, cfg.secrets));
     if (cfg.secrets.simkl) sources.push(simklHistory(cfg.secrets));
     if (cfg.settings.anilistUser) sources.push(anilistUserHistory(cfg.settings.anilistUser, animeCatalogId));

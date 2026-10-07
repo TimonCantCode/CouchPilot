@@ -87,6 +87,29 @@ details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}de
 fieldset.fs{border:0;margin:0;padding:0;min-width:0}fieldset.fs:disabled{opacity:.45}
 .row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.danger{color:#ff8a8f;border-color:rgba(229,9,20,.45)}
 .foot{margin:40px 0 0;font-size:12px;color:var(--muted)}.foot p{margin:8px 0}.foot img{opacity:.8}
+/* Step layout: sidebar on desktop, drawer on phones, one step at a time when JS runs */
+main:has(.shell){max-width:1100px}
+.shell{display:grid;grid-template-columns:230px minmax(0,1fr);gap:32px;align-items:start}
+.js .step{margin-top:0}
+.side{position:sticky;top:20px;display:flex;flex-direction:column;gap:2px}
+.side-h{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 12px 6px}.side-h:first-child{margin-top:0}
+.side a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;color:var(--muted);text-decoration:none;font-weight:600}
+.side a b{display:grid;place-items:center;width:24px;height:24px;flex:none;border-radius:50%;background:var(--panel2);border:1px solid var(--line);font-size:12px;color:var(--text)}
+.side a:hover{background:var(--panel);color:var(--text)}
+.side a[aria-current]{background:var(--panel);color:var(--text);box-shadow:inset 3px 0 0 var(--accent)}
+.side a.done b{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.5)}
+.side .profiles{padding:0 4px;margin:0}
+.burger{display:none}.scrim{display:none}
+.js .step:not(.on),.js [data-steps]:not(.on){display:none}
+.bar>div.wide{max-width:1100px;padding:0 16px 0 278px}.bar .sp{flex:1}
+.pager{max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block}
+.bar:has(#savebtn[hidden]) #next{background:var(--accent);border-color:transparent}
+.shell~.foot{margin-left:262px}
+@media (max-width:860px){
+  .shell{display:block}.burger{display:inline-flex}.bar>div.wide{padding:0}.shell~.foot{margin-left:0}
+  .side{position:fixed;z-index:30;top:0;left:0;bottom:0;width:min(300px,84vw);overflow-y:auto;background:var(--bg);border-right:1px solid var(--line);padding:20px 12px;transform:translateX(-102%);transition:transform .2s}
+  .nav-open .side{transform:none}.nav-open .scrim{display:block;position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.55)}
+}
 .hero-cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-top:24px}
 `;
 
@@ -136,6 +159,24 @@ ${error ? `<div class="note err">${esc(error)}</div>` : ''}
 // Sorting: arrows (phone) and drag & drop on the handle (desktop). The order of the hidden "order" inputs is saved.
 // Live status: polls /status while a job is running.
 const PAGE_JS = `
+document.documentElement.classList.add('js');
+const steps=[...document.querySelectorAll('.step')],links=[...document.querySelectorAll('.side a[href^="#"]')];
+const prevB=document.getElementById('prev'),nextB=document.getElementById('next'),saveB=document.getElementById('savebtn');
+const idx=()=>steps.findIndex(x=>x.classList.contains('on'));
+function show(id,scroll){let i=steps.findIndex(x=>x.id===id);if(i<0)i=0;const cur=steps[i],p=steps[i-1],n=steps[i+1];
+steps.forEach(x=>x.classList.toggle('on',x===cur));
+document.querySelectorAll('[data-steps]').forEach(e=>e.classList.toggle('on',e.dataset.steps.split(',').includes(cur.id)));
+links.forEach(a=>a.getAttribute('href')==='#'+cur.id?a.setAttribute('aria-current','step'):a.removeAttribute('aria-current'));
+prevB.hidden=!p;nextB.hidden=!n;if(p)prevB.textContent='← '+p.dataset.title;if(n)nextB.textContent=n.dataset.title+' →';
+saveB.hidden=!cur.closest('#cfg');
+try{sessionStorage.setItem('cp-step',cur.id);}catch(e){}
+history.replaceState(null,'','#'+cur.id);document.body.classList.remove('nav-open');if(scroll)window.scrollTo(0,0);}
+links.forEach(a=>a.addEventListener('click',e=>{e.preventDefault();show(a.getAttribute('href').slice(1),true);}));
+prevB.addEventListener('click',()=>show(steps[idx()-1].id,true));nextB.addEventListener('click',()=>show(steps[idx()+1].id,true));
+let first=location.hash.slice(1);if(!first){try{first=sessionStorage.getItem('cp-step')||'';}catch(e){}}show(first,false);
+const bg=document.getElementById('burger');
+bg.addEventListener('click',()=>{const o=document.body.classList.toggle('nav-open');bg.setAttribute('aria-expanded',String(o));});
+document.getElementById('scrim').addEventListener('click',()=>{document.body.classList.remove('nav-open');bg.setAttribute('aria-expanded','false');});
 const list=document.getElementById('rowlist');let drag=null;
 list.addEventListener('click',e=>{const b=e.target.closest('[data-mv]');if(!b)return;const r=b.closest('.row');
 if(b.dataset.mv==='up'&&r.previousElementSibling)list.insertBefore(r,r.previousElementSibling);
@@ -166,6 +207,7 @@ export function configPage(o: {
   profiles: { id: string; label: string }[];
   defaultId: string;
   inheritedFrom?: string;
+  nuvioShared?: boolean;
   hasPassword: boolean;
   installUrl: string;
   settings: Settings;
@@ -203,7 +245,9 @@ export function configPage(o: {
   const disconnect = (path: string) => `<form method="post" action="${path}"><button class="ghost">Disconnect</button></form>`;
   const connect = (path: string) => `<form method="post" action="${path}"><button>Connect</button></form>`;
 
-  const nuvio = o.secrets.nuvio
+  const nuvio = o.nuvioShared
+    ? conn('Nuvio Sync', true, `uses your default profile's login${s.nuvioProfiles.length > 1 ? ', pick this profile\'s Nuvio profile in step 2' : ''}`, '')
+    : o.secrets.nuvio
     ? conn('Nuvio Sync', true, `connected${s.nuvioProfiles.length > 1 ? ', pick the profile in step 2' : ''}`, disconnect('/disconnect/nuvio'))
     : `<details class="inline"><summary>${conn('Nuvio Sync', false, 'not connected', '<span class="btn">Connect</span>')}</summary>
 <form method="post" action="/connect/nuvio" class="sec" style="margin-top:8px">
@@ -257,18 +301,34 @@ export function configPage(o: {
   const inherit = !!o.inheritedFrom;
   const lock = inherit ? ' disabled' : '';
   const inheritNote = inherit
-    ? `<div class="note"><b>This profile follows “${esc(label(o.inheritedFrom!))}”.</b> Rows, AI and settings come from there, your watch history stays your own.
+    ? `<div class="note" data-steps="rows,ai,settings"><b>This profile follows “${esc(label(o.inheritedFrom!))}”.</b> Rows, AI and settings come from there, your watch history stays your own.
 <form method="post" action="/profile/inherit" style="display:block;margin-top:10px"><input type="hidden" name="on" value="0"><button class="ghost">Customize for this profile</button></form></div>`
     : '';
 
+  const steps: [string, string, boolean][] = [
+    ['history', 'Watch history', hasHistory],
+    ['rows', 'Rows', false],
+    ['ai', 'AI', !!ai.provider],
+    ['settings', 'Settings', !!tmdb],
+    ['install', 'Install', false],
+    ['profiles', 'Profiles', false],
+    ['account', 'Account', o.hasPassword],
+  ];
   return page(
     'Configure',
-    `${brand(`${support(o.supportUrl)}${o.hasPassword ? '<form method="post" action="/logout"><button class="ghost">Log out</button></form>' : ''}`)}
-${o.profiles.length > 1 ? profileBar : ''}
+    `${brand(`${support(o.supportUrl)}${o.hasPassword ? '<form method="post" action="/logout"><button class="ghost">Log out</button></form>' : ''}<button type="button" class="ghost burger" id="burger" aria-label="Menu" aria-expanded="false" aria-controls="side">☰</button>`)}
+<div class="shell">
+<nav class="side" id="side" aria-label="Setup steps">
+${o.profiles.length > 1 ? `<p class="side-h">Profile</p>${profileBar}` : ''}
+<p class="side-h">Setup</p>
+${steps.map(([id, title, done], i) => `<a href="#${id}"${done ? ' class="done"' : ''}><b>${done ? '✓' : i + 1}</b>${title}</a>`).join('')}
+</nav>
+<div class="scrim" id="scrim"></div>
+<div class="content">
 ${o.msg ? `<div class="note ${o.msg.ok ? 'ok' : 'err'}">${esc(o.msg.text)}</div>` : ''}
 ${tmdb ? '' : '<div class="note err"><b>TMDB key missing.</b> Without it, movie, series and For You rows stay empty. Get one for free and add it in step 4.</div>'}
 
-<section class="sec" id="history"><h2><b>1</b>Watch history</h2>
+<section class="sec step" id="history" data-title="Watch history"><h2><b>1</b>Watch history</h2>
 <p class="sub">Your “For You” rows are built from this. Read-only, nothing is ever changed.</p>
 ${nuvio}${trakt}${simkl}${anilist}
 ${hasHistory ? `<div class="actions"><form method="post" action="/refresh"><button class="ghost">Recompute For You rows</button></form></div>` : ''}
@@ -277,7 +337,7 @@ ${hasHistory ? `<div class="actions"><form method="post" action="/refresh"><butt
 
 ${inheritNote}
 <form method="post" action="/configure" id="cfg">
-<section class="sec"><h2><b>2</b>Rows</h2>
+<section class="sec step" id="rows" data-title="Rows"><h2><b>2</b>Rows</h2>
 <p class="sub">Toggle = show, ★ = from your watch history. Reorder with the arrows or drag the handle. Click a name to rename it, empty = default name. “Mix” shows movies and series in one row.</p>
 <fieldset class="fs"${lock}><div class="rows" id="rowlist">${rows}</div></fieldset>
 ${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for “For You”<select name="nuvioProfile">${s.nuvioProfiles.map((p) => `<option value="${p.index}"${p.index === s.nuvioProfile ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
@@ -285,7 +345,7 @@ ${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for “For You”<select na
 </section>
 
 <fieldset class="fs"${lock}>
-<section class="sec"><h2><b>3</b>AI</h2>
+<section class="sec step" id="ai" data-title="AI"><h2><b>3</b>AI</h2>
 <p class="sub">Optional. Ranks the For You rows by your taste, names genre mixes and writes short reasons. Without AI you get a default ranking.</p>
 <label>Provider<select name="aiProvider" id="aiProvider"><option value="">No AI</option>${Object.entries(PROVIDERS)
       .map(([k, v]) => `<option value="${k}"${k === ai.provider ? ' selected' : ''}>${esc(v.label)}</option>`)
@@ -303,7 +363,7 @@ ${usageBox}
 </div>
 </section>
 
-<section class="sec"><h2><b>4</b>Settings</h2>
+<section class="sec step" id="settings" data-title="Settings"><h2><b>4</b>Settings</h2>
 <label>TMDB API key<span>${tmdb ? `Saved: <code>${esc(mask(tmdb))}</code>. Leave empty to keep it.` : 'Required for movie, series and For You rows.'} <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">Get one for free ↗</a></span>
 <input type="password" name="tmdbKey" placeholder="${tmdb ? '••••••••' : 'API key or read access token'}" autocomplete="off" maxlength="400"></label>
 ${tmdb ? '<label class="check"><input class="sw" type="checkbox" name="removeTmdb" value="1">Delete saved key</label>' : ''}
@@ -324,7 +384,7 @@ ${tmdb ? '<label class="check"><input class="sw" type="checkbox" name="removeTmd
 </fieldset>
 </form>
 
-<section class="sec install"><h2><b>5</b>Install</h2>
+<section class="sec step install" id="install" data-title="Install"><h2><b>5</b>Install</h2>
 <p class="sub">Save first, then paste this URL into Nuvio under Addons. Treat it like a password: whoever has it can change your settings (but nobody can see your keys).</p>
 <input type="text" readonly value="${esc(o.installUrl)}" id="installurl">
 <div class="actions"><button type="button" id="copyurl">Copy URL</button><a class="btn ghost" href="${esc(o.installUrl.replace(/^https?:/, 'stremio:'))}">Open in Stremio</a>
@@ -332,7 +392,7 @@ ${tmdb ? '<label class="check"><input class="sw" type="checkbox" name="removeTmd
 <p class="small muted">A new URL disables the old one immediately and signs out other devices.</p>
 </section>
 
-<section class="sec"><h2><b>6</b>Profiles</h2>
+<section class="sec step" id="profiles" data-title="Profiles"><h2><b>6</b>Profiles</h2>
 <p class="sub">Sharing Nuvio? Every profile has its own watch history and install URL. By default all profiles follow the ★ default profile’s rows, AI and settings, and you can still customize a single profile.</p>
 ${o.profiles
   .map(
@@ -347,7 +407,7 @@ ${!inherit && o.profileId !== o.defaultId ? `<form method="post" action="/profil
 <div class="actions"><button class="ghost">Create profile</button></div></form>
 </section>
 
-<section class="sec"><h2><b>7</b>Account <span class="pill">optional</span></h2>
+<section class="sec step" id="account" data-title="Account"><h2><b>7</b>Account <span class="pill">optional</span></h2>
 <p class="sub">Your account ID: <code>${esc(o.accountId)}</code></p>
 <p class="small muted">${o.hasPassword ? 'Password is set. You can always log in with your account ID and password.' : 'Without a password you can only get back here via “Configure” on the addon in Nuvio. With a password you can also log in with your account ID.'}</p>
 <form method="post" action="/account/password">
@@ -367,7 +427,8 @@ ${!inherit && o.profileId !== o.defaultId ? `<form method="post" action="/profil
 <div class="actions"><button>Delete permanently</button></div></form></details>
 </section>
 
-<div class="bar"><div><span class="small muted">Rows, AI and settings</span><button form="cfg">Save</button></div></div>`,
+</div></div>
+<div class="bar"><div class="actions wide" style="margin:0 auto;flex-wrap:nowrap"><button type="button" class="ghost pager" id="prev" hidden></button><span class="sp"></span><button form="cfg" id="savebtn">Save</button><button type="button" class="ghost pager" id="next" hidden></button></div></div>`,
     o.nonce,
     PAGE_JS,
   );

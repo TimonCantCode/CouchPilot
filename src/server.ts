@@ -197,6 +197,7 @@ async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, 
         profiles,
         defaultId,
         inheritedFrom: cfg.inheritedFrom,
+        nuvioShared: !!cfg.nuvioOwner && cfg.nuvioOwner !== userId,
         hasPassword: pw.rows[0].has,
         installUrl: `${PUBLIC_URL}/${cfg.token}/manifest.json`,
         settings: cfg.settings,
@@ -247,7 +248,7 @@ app.post('/configure', auth, async (req, res) => {
     const anilist = field(b.anilistUser);
     if (anilist && !/^[A-Za-z0-9_-]{2,20}$/.test(anilist)) return renderConfig(res, { ok: false, text: 'Invalid AniList username. Nothing saved.' }, 400);
     const prof = Number(b.nuvioProfile);
-    await saveSettings(userId, { ...own, anilistUser: anilist, nuvioProfile: own.nuvioProfiles.some((p) => p.index === prof) ? prof : own.nuvioProfile });
+    await saveSettings(userId, { ...own, anilistUser: anilist, nuvioProfile: cfg.settings.nuvioProfiles.some((p) => p.index === prof) ? prof : own.nuvioProfile });
     if (cfg.secrets.nuvio || cfg.secrets.trakt || cfg.secrets.simkl || anilist) void runJob(userId);
     return res.redirect(303, '/configure?ok=saved');
   }
@@ -501,7 +502,13 @@ app.post('/profile/new', auth, async (req, res) => {
   const label = field(req.body.label).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 30) || 'New profile';
   const { rows } = await db.query('insert into users (parent_id, label) values ($1, $2) returning id', [root, label]);
   const id = rows[0].id as string;
-  await rotateToken(id, { ...DEFAULT_SETTINGS, inherit: true }); // follows the default profile until customized
+  // Pre-select the first Nuvio profile no other profile uses yet, so each profile gets its own history
+  const { settings: ds } = await configByUser(await defaultProfileOf(root));
+  const { rows: siblings } = await db.query('select c.settings from configs c join users u on u.id = c.user_id where coalesce(u.parent_id, u.id) = $1', [root]);
+  const taken = new Set(siblings.map((r) => ({ ...DEFAULT_SETTINGS, ...r.settings }).nuvioProfile));
+  const nuvioProfile = ds.nuvioProfiles.find((p) => !taken.has(p.index))?.index ?? DEFAULT_SETTINGS.nuvioProfile;
+  await rotateToken(id, { ...DEFAULT_SETTINGS, inherit: true, nuvioProfile }); // follows the default profile until customized
+  void runJob(id);
   await login(res, id, '/configure?ok=profile');
 });
 

@@ -96,7 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultProfile: '',
 };
 
-export type UserConfig = { userId: string; settings: Settings; secrets: Secrets; inheritedFrom?: string };
+export type UserConfig = { userId: string; settings: Settings; secrets: Secrets; inheritedFrom?: string; nuvioOwner?: string };
 
 const aadSecrets = (userId: string) => `secrets:${userId}`;
 const aadToken = (userId: string) => `token:${userId}`;
@@ -104,21 +104,24 @@ const readSecrets = (userId: string, enc: string | null): Secrets => (enc ? JSON
 const readSettings = (raw: object): Settings => ({ ...DEFAULT_SETTINGS, ...raw });
 
 // Profiles that inherit get the default profile's settings and API keys, but keep their own history
-// (Nuvio profile, AniList user, Nuvio/Trakt/Simkl tokens).
+// (Nuvio profile, AniList user, Trakt/Simkl tokens). The Nuvio login belongs to the account: profiles without
+// their own login use the default profile's login, each with its own Nuvio profile.
 async function resolve(userId: string, settings: Settings, secrets: Secrets): Promise<UserConfig> {
-  const own = { userId, settings, secrets };
-  if (!settings.inherit) return own;
   const defaultId = await defaultProfileOf(userId);
-  if (defaultId === userId) return own;
-  const { rows } = await db.query('select settings, secrets_enc from configs where user_id = $1', [defaultId]);
-  if (!rows[0]) return own;
-  const ds = readSettings(rows[0].settings);
-  const dsec = readSecrets(defaultId, rows[0].secrets_enc);
+  const row = defaultId === userId ? undefined : (await db.query('select settings, secrets_enc from configs where user_id = $1', [defaultId])).rows[0];
+  const ds = row && readSettings(row.settings);
+  const dsec = row && readSecrets(defaultId, row.secrets_enc);
+  const shareNuvio = !secrets.nuvio && !!dsec?.nuvio;
+  const nuvio = secrets.nuvio ?? (shareNuvio ? dsec!.nuvio : undefined);
+  const nuvioOwner = secrets.nuvio ? userId : shareNuvio ? defaultId : undefined;
+  const nuvioProfiles = shareNuvio ? ds!.nuvioProfiles : settings.nuvioProfiles;
+  if (!settings.inherit || !ds) return { userId, settings: { ...settings, nuvioProfiles }, secrets: { ...secrets, nuvio }, nuvioOwner };
   return {
     userId,
     inheritedFrom: defaultId,
-    settings: { ...ds, nuvioProfile: settings.nuvioProfile, nuvioProfiles: settings.nuvioProfiles, anilistUser: settings.anilistUser, inherit: true, defaultProfile: '' },
-    secrets: { ...secrets, tmdbKey: dsec.tmdbKey ?? secrets.tmdbKey, aiKey: dsec.aiKey },
+    nuvioOwner,
+    settings: { ...ds, nuvioProfile: settings.nuvioProfile, nuvioProfiles, anilistUser: settings.anilistUser, inherit: true, defaultProfile: '' },
+    secrets: { ...secrets, nuvio, tmdbKey: dsec!.tmdbKey ?? secrets.tmdbKey, aiKey: dsec!.aiKey },
   };
 }
 
