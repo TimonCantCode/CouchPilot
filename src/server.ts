@@ -4,7 +4,7 @@ import { catalog, manifest, meta, ROWS, type Ctx, type RowType } from './addon.t
 import { assertPublicUrl, PROVIDERS } from './ai.ts';
 import { hashPassword, verifyPassword } from './crypto.ts';
 import { nuvioProfileList, nuvioSignIn, SIMKL_ID, simklPin, simklPoll, TRAKT_ID, traktDeviceCode, traktPoll } from './history.ts';
-import { aiUsage, jobStatus, runJob, startScheduler } from './personal.ts';
+import { aiUsage, jobStatus, markQueued, runJob, startScheduler } from './personal.ts';
 import { checkTmdbKey, loadAnimeMap, type Type } from './sources.ts';
 import {
   configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
@@ -194,7 +194,7 @@ async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, 
     redis.get(`simkl:pin:${userId}`),
     db.query('select pw_hash is not null as has from users where id = $1', [root]),
     profileInfo(root, cfg.settings.nuvioProfiles),
-    jobStatus(userId),
+    jobsOf(userId),
     defaultProfileOf(userId),
     aiUsage(userId),
   ]);
@@ -217,7 +217,7 @@ async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, 
         traktPending: trakt ? JSON.parse(trakt) : null,
         simklAvailable: !!SIMKL_ID,
         simklPending: simkl ? JSON.parse(simkl) : null,
-        jobStatus: job,
+        jobs: job,
         aiUsage: usage,
         supportUrl: SUPPORT_URL,
         msg,
@@ -260,7 +260,15 @@ async function customize(userId: string) {
 
 // One after another, so a family account does not start 8 jobs at once
 async function recomputeAll(root: string) {
-  for (const p of await profilesOf(root)) await runJob(p.id);
+  const profiles = await profilesOf(root);
+  await markQueued(profiles.map((p) => p.id));
+  for (const p of profiles) await runJob(p.id);
+}
+
+// Job status of every profile of the account (config page + live polling)
+async function jobsOf(userId: string) {
+  const profiles = await profilesOf(await rootOf(userId));
+  return Promise.all(profiles.map(async (p) => ({ id: p.id, label: p.label, ...(await jobStatus(p.id)) })));
 }
 
 // Nuvio profiles become Couchpilot profiles: the main profile takes the first one, every other Nuvio profile
@@ -376,7 +384,10 @@ app.post('/configure', auth, async (req, res) => {
 });
 
 // Live status for the config page (polled while a job runs)
-app.get('/status', auth, async (_req, res) => void res.json((await jobStatus(res.locals.userId)) ?? { text: '', running: false }));
+app.get('/status', auth, async (_req, res) => {
+  const jobs = await jobsOf(res.locals.userId);
+  res.json({ running: jobs.some((j) => j.running), jobs: jobs.map(({ label, text, state }) => ({ label, text, state })) });
+});
 
 // ---------- Backup: export / import settings as a JSON file (for people without a password) ----------
 

@@ -19,13 +19,18 @@ export async function personalRow(userId: string, row: string): Promise<Stored |
 }
 
 // Status line for the config page. A "running" status without a lock means the job died (e.g. server restart).
-export async function jobStatus(userId: string): Promise<{ text: string; running: boolean } | null> {
-  const [text, lock] = await Promise.all([redis.get(`pers:status:${userId}`), redis.exists(`pers:lock:${userId}`)]);
-  if (!text) return null;
+export type JobState = 'queued' | 'running' | 'done' | 'error' | 'none';
+export async function jobStatus(userId: string): Promise<{ text: string; running: boolean; state: JobState }> {
+  const [text, lock, queued] = await Promise.all([redis.get(`pers:status:${userId}`), redis.exists(`pers:lock:${userId}`), redis.exists(`pers:queued:${userId}`)]);
+  if (queued && !lock) return { text: 'waiting for the other profiles', running: true, state: 'queued' };
+  if (!text) return { text: '', running: false, state: 'none' };
   const running = text.includes('· running') || text.includes('läuft'); // 'läuft' = status from v0.4
-  if (running && !lock) return { text: `${text.replace('· running', '· interrupted at').replace('läuft …', 'interrupted')} – click “Recompute”`, running: false };
-  return { text, running };
+  if (running && !lock) return { text: `${text.replace('· running', '· interrupted at').replace('läuft …', 'interrupted')} – click “Recompute”`, running: false, state: 'error' };
+  return { text, running, state: running ? 'running' : text.includes('· error') ? 'error' : 'done' };
 }
+
+// Mark profiles as waiting before a "recompute all" works through them one by one
+export const markQueued = (userIds: string[]) => Promise.all(userIds.map((id) => redis.set(`pers:queued:${id}`, '1', 'EX', 1800)));
 
 const JOB_TIMEOUT_MS = 5 * 60_000;
 
@@ -86,6 +91,7 @@ export function startScheduler() {
 
 export async function runJob(userId: string) {
   if (!(await redis.set(`pers:lock:${userId}`, '1', 'EX', 600, 'NX'))) return;
+  await redis.del(`pers:queued:${userId}`);
   const started = Date.now();
   const status = (s: string) => redis.set(`pers:status:${userId}`, `${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC · ${s}`);
   const progress = (s: string) => {

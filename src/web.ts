@@ -31,7 +31,7 @@ body{margin:0;min-height:100vh;color:var(--text);font:15px/1.55 ui-sans-serif,sy
 main{max-width:680px;margin:0 auto;padding:28px 16px 120px}
 a{color:var(--text);text-underline-offset:3px}code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace;word-break:break-all}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:-.02em;margin-bottom:28px}
-.brand img{width:32px;height:32px}
+.brand img{width:32px;height:32px}.brand .home{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
 .brand .sp{flex:1}
 h1{font-size:34px;line-height:1.1;letter-spacing:-.03em;margin:0 0 10px}
 .lead{color:var(--muted);font-size:17px;margin:0 0 24px}
@@ -77,9 +77,14 @@ details.inline{margin-top:10px}details.inline>summary{list-style:none;cursor:poi
 form:has(#aiProvider option:not([value=""]):checked) .ai-only{display:block}
 ${Object.keys(PROVIDERS).map((k) => `form:has(#aiProvider option[value="${k}"]:checked) .p-${k}`).join(',')}{display:block}
 form:has(#metaSource option[value=cinemeta]:checked) .meta-only{display:none}
+.jobs{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.job{display:grid;grid-template-columns:auto minmax(70px,auto) 1fr;gap:4px 10px;align-items:baseline;font-size:13px}
+.job .dot{margin:0;align-self:center}.job.done .dot{background:var(--ok)}.job.error .dot{background:var(--accent)}
+.job.running .dot,.job.queued .dot{background:#f5a524;animation:pulse .9s infinite alternate}@keyframes pulse{to{opacity:.25}}
+.jobs.single .job{grid-template-columns:auto 1fr}.jobs.single .job b{display:none}
 details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}details.adv>summary{cursor:pointer;font-weight:600}
 /* Save bar */
-.bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px;background:rgba(9,9,11,.82);backdrop-filter:blur(12px);border-top:1px solid var(--line)}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px;background:var(--bg);border-top:1px solid var(--line)}
 .bar>div{max-width:680px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .install input{font:13px ui-monospace,monospace}
 .top{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.top .btn,.top button{padding:7px 12px;font-size:13px}
@@ -124,7 +129,7 @@ const page = (title: string, body: string, nonce = '', script = '') => `<!doctyp
 <body><main>${body}${FOOTER}</main>${script && nonce ? `<script nonce="${esc(nonce)}">${script}</script>` : ''}</body></html>`;
 
 const support = (url?: string) => (url ? `<a class="btn ghost" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Support ♥</a>` : '');
-const brand = (extra = '') => `<div class="brand"><img src="/logo.svg" alt="">Couchpilot<span class="sp"></span><div class="top">${extra}</div></div>`;
+const brand = (extra = '') => `<div class="brand"><a href="/" class="home" aria-label="Couchpilot home"><img src="/logo.svg" alt="">Couchpilot</a><span class="sp"></span><div class="top">${extra}</div></div>`;
 
 export const homePage = (publicUrl: string, supportUrl?: string, error?: string) =>
   page(
@@ -188,10 +193,12 @@ list.querySelectorAll('.handle').forEach(h=>{h.addEventListener('dragstart',e=>{
 h.addEventListener('dragend',()=>{if(drag){drag.classList.remove('dragging');markDirty();}drag=null;});});
 list.addEventListener('dragover',e=>{if(!drag)return;e.preventDefault();const r=e.target.closest('.row');if(!r||r===drag)return;
 const b=r.getBoundingClientRect();list.insertBefore(drag,e.clientY<b.top+b.height/2?r:r.nextSibling);});
-const st=document.getElementById('jobstatus');
+const jl=document.getElementById('jobs');
+function jobLi(j){const li=document.createElement('li');li.className='job '+j.state;const d=document.createElement('span');d.className='dot';
+const b=document.createElement('b');b.textContent=j.label;const t=document.createElement('span');t.className='muted';t.textContent=j.text||'not computed yet';li.append(d,b,t);return li;}
 async function poll(){try{const r=await fetch('/status',{credentials:'same-origin'});const j=await r.json();
-if(j.text){st.hidden=false;st.textContent='Last run: '+j.text;}if(j.running)setTimeout(poll,3000);}catch(e){setTimeout(poll,10000);}}
-if(st&&st.dataset.running==='1')setTimeout(poll,2000);
+jl.replaceChildren(...j.jobs.map(jobLi));if(j.running)setTimeout(poll,3000);}catch(e){setTimeout(poll,10000);}}
+if(jl&&(jl.dataset.running==='1'||/ok=(refresh|saved|savedall|synced|nuvio|trakt|simkl|imported|profile)/.test(location.search)))setTimeout(poll,1500);
 const cb=document.getElementById('copyurl'),iu=document.getElementById('installurl');
 cb&&cb.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(iu.value);}catch(e){iu.select();document.execCommand('copy');}
 cb.textContent='Copied ✓';setTimeout(()=>cb.textContent='Copy URL',2000);});
@@ -219,7 +226,7 @@ export function configPage(o: {
   traktPending: { userCode: string; url: string } | null;
   simklAvailable: boolean;
   simklPending: { userCode: string; url: string } | null;
-  jobStatus: { text: string; running: boolean } | null;
+  jobs: { id: string; label: string; text: string; running: boolean; state: string }[];
   aiUsage: { calls: number; in: number; out: number };
   supportUrl?: string;
   msg?: { ok: boolean; text: string };
@@ -249,9 +256,9 @@ export function configPage(o: {
   const connect = (path: string) => `<form method="post" action="${path}"><button>Connect</button></form>`;
 
   const nuvio = o.nuvioShared
-    ? conn('Nuvio Sync', true, `uses your default profile's login${s.nuvioProfiles.length > 1 ? ', pick this profile\'s Nuvio profile in step 2' : ''}`, '')
+    ? conn('Nuvio Sync', true, `connected via the main profile's login${s.nuvioProfiles.length > 1 ? ', reads its own Nuvio profile' : ''}`, '')
     : o.secrets.nuvio
-    ? conn('Nuvio Sync', true, `connected${s.nuvioProfiles.length > 1 ? ', pick the profile in step 2' : ''}`, disconnect('/disconnect/nuvio'))
+    ? conn('Nuvio Sync', true, `connected${s.nuvioProfiles.length > 1 ? ', every profile reads its own Nuvio profile (see step 5)' : ''}`, disconnect('/disconnect/nuvio'))
     : `<details class="inline"><summary>${conn('Nuvio Sync', false, 'not connected', '<span class="btn">Connect</span>')}</summary>
 <form method="post" action="/connect/nuvio" class="sec" style="margin-top:8px">
 <p class="small muted" style="margin:0">Your Nuvio login. The password is used once to sign in and is never stored.</p>
@@ -289,7 +296,6 @@ export function configPage(o: {
         .map((p) => `<option value="${esc(p.id)}"${p.id === o.profileId ? ' selected' : ''}>${esc(p.label)}</option>`)
         .join('')}</select><noscript><button class="ghost">Switch</button></noscript></form>`
     : '';
-  const job = o.jobStatus;
   // AI cost: real usage of the last 30 days plus an estimate for the chosen refresh interval
   const price = ai.provider ? priceFor(ai) : null;
   const usd = (i: number, out: number) => (price ? (i * price[0] + out * price[1]) / 1e6 : null);
@@ -335,7 +341,10 @@ ${tmdb ? '' : '<div class="note err"><b>TMDB key missing.</b> Without it, movie,
 <p class="sub">Your “For You” rows are built from this. Read-only, nothing is ever changed.</p>
 ${nuvio}${trakt}${simkl}${anilist}
 ${hasHistory || multi ? `<div class="actions">${hasHistory ? `<form method="post" action="/refresh"><button class="ghost">Recompute${multi ? ' this profile' : ' For You rows'}</button></form>` : ''}${multi ? `<form method="post" action="/refresh"><input type="hidden" name="all" value="1"><button class="ghost">Recompute all profiles</button></form>` : ''}</div>` : ''}
-<p class="small muted" id="jobstatus" style="margin:12px 0 0" data-running="${job?.running ? '1' : '0'}"${job ? '' : ' hidden'}>Last run: ${esc(job?.text ?? '')}</p>
+<h3>${multi ? 'Status per profile' : 'Last run'}</h3>
+<ul class="jobs${multi ? '' : ' single'}" id="jobs" data-running="${o.jobs.some((j) => j.running) ? '1' : '0'}">${(multi ? o.jobs : o.jobs.filter((j) => j.id === o.profileId))
+  .map((j) => `<li class="job ${esc(j.state)}"><span class="dot"></span><b>${esc(j.label)}</b><span class="muted">${esc(j.text || 'not computed yet')}</span></li>`)
+  .join('')}</ul>
 </section>
 
 ${scopeNote}
