@@ -15,6 +15,9 @@ Your couch, on autopilot: an unofficial, self-hosted Cinemeta replacement for Nu
 - **AI cost:** the AI section shows real token usage of the last 30 days and an estimated monthly cost for the chosen refresh interval.
 - **Backup:** export/import your settings as a JSON file (optionally with TMDB/AI keys), so you don't need a password.
 - **Hide watched:** Trending, Popular, New and the other standard rows skip what the profile has already watched (per profile, on by default).
+- **AI search:** with AI set up, Nuvio's search also understands descriptions (“the movie with the dream in a dream”), 3+ words, max. 30 per day and user.
+- **Kids mode** (per profile): age rating limit (German FSK, US as fallback) and blocked genres in every row and in search.
+- **Trailers in rows:** every row item carries its YouTube trailer, so Nuvio can autoplay it on the home screen.
 - **Seasonal row:** Halloween horror in October, Christmas movies in December, hidden the rest of the year.
 - **Usability:** works without an account; show/hide, rename and reorder rows; optional password.
 - **Profiles:** connecting Nuvio Sync imports your Nuvio profiles, each with its own watch history and install URL. Switch profiles at the top of the config page, then save for all profiles or only the open one (e.g. German metadata for one profile, English for another). Recompute one or all profiles.

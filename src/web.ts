@@ -13,6 +13,8 @@ export const LANGUAGES: Record<string, string> = {
   'ja-JP': '日本語',
 };
 export const REFRESH_HOURS = [1, 3, 6, 12, 24];
+export const KID_AGES = [0, 6, 12, 16];
+const KID_GENRE_NAMES: Record<string, string> = { horror: 'Horror', thriller: 'Thriller', crime: 'Crime', war: 'War', romance: 'Romance', mystery: 'Mystery' };
 export const TIMEZONES = [
   'Europe/Berlin', 'Europe/Vienna', 'Europe/Zurich', 'Europe/London', 'Europe/Paris', 'Europe/Madrid', 'Europe/Rome', 'Europe/Amsterdam',
   'Europe/Warsaw', 'Europe/Istanbul', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Sao_Paulo',
@@ -87,6 +89,8 @@ details.more>summary{cursor:pointer;display:flex;align-items:center;gap:8px;padd
 details.more>summary::-webkit-details-marker{display:none}details.more>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
 details.more[open]>summary::before{transform:rotate(90deg)}details.more>summary .small{margin-left:auto;font-weight:400}
 details.more .rows{padding-bottom:10px}#rowmore .handle,#rowmore .mv{visibility:hidden}
+form:not(:has([name=kidsOn]:checked)) .kids-only{display:none}
+.chips{display:flex;flex-wrap:wrap;gap:0 18px}.chips .check{margin-top:8px}
 details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}details.adv>summary{cursor:pointer;font-weight:600}
 /* Save bar */
 .bar{position:fixed;z-index:20;left:0;right:0;bottom:0;padding:12px 16px;background:var(--bg);border-top:1px solid var(--line)}
@@ -450,6 +454,7 @@ ${o.secrets.aiKey ? '<label class="check"><input class="sw" type="checkbox" name
 <label>Model<span>Empty = the provider’s default model.</span><input type="text" name="aiModel" maxlength="100" value="${esc(ai.model)}"></label>
 <label>Your wishes<span>The AI takes this into account every time.</span><textarea name="aiPrompt" maxlength="500" placeholder="e.g. more thrillers and sci-fi, no rom-coms, older classics are welcome">${esc(s.aiPrompt)}</textarea></label>
 <label class="check"><input class="sw" type="checkbox" name="aiReasons" value="1"${s.aiReasons ? ' checked' : ''}>Short reason in the description (“Because you liked Dark …”)</label>
+<label class="check"><input class="sw" type="checkbox" name="aiSearch" value="1"${s.aiSearch ? ' checked' : ''}>AI search: Nuvio's search also understands descriptions like “the movie with the dream in a dream” (3+ words, max. 30 per day)</label>
 ${usageBox}
 <p class="small muted">At most 40 AI calls per day, so your key can’t be drained.</p>
 </div>
@@ -471,6 +476,14 @@ ${tmdb ? '<label class="check"><input class="sw" type="checkbox" name="removeTmd
 <p class="small muted" style="margin:6px 0 0">Always included: HD background, localized poster and title logo.</p>
 </div>
 <label>Metadata language<select name="language">${Object.entries(LANGUAGES).map(([k, v]) => `<option value="${k}"${k === s.language ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+<h3>Kids mode</h3>
+<label class="check"><input class="sw" type="checkbox" name="kidsOn" value="1"${s.kids.on ? ' checked' : ''}>Only show titles suitable for children in every row and in search</label>
+<div class="kids-only">
+<label>Age rating up to<select name="kidsAge">${KID_AGES.map((a) => `<option value="${a}"${a === s.kids.maxAge ? ' selected' : ''}>${a === 0 ? 'All ages (0)' : `${a} years`}</option>`).join('')}</select></label>
+<p class="small muted" style="margin:14px 0 0">Also hide these genres:</p>
+<div class="chips">${Object.entries(KID_GENRE_NAMES).map(([k, n]) => `<label class="check"><input class="sw" type="checkbox" name="kidsBlock" value="${k}"${s.kids.blockGenres.includes(k) ? ' checked' : ''}>${n}</label>`).join('')}</div>
+<p class="small muted" style="margin:10px 0 0">Uses the German age rating (FSK), US rating as fallback. Titles without a rating are hidden to be safe, so some anime rows can get short.</p>
+</div>
 <label>Time zone<span>For the time-of-day row (feel-good, late night, weekend).</span><select name="timezone">${TIMEZONES.map((t) => `<option${t === s.timezone ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
 </section>
 </form>

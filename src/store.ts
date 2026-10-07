@@ -68,6 +68,8 @@ export type Settings = {
   anilistUser: string;
   meta: { source: 'cinemeta' | 'enhanced'; localize: boolean; cast: boolean; trailers: boolean; episodes: boolean };
   hideWatched: boolean; // hide already watched titles in Trending, Popular, New … rows
+  aiSearch: boolean; // Nuvio search also understands descriptions ("the movie with the dream in a dream")
+  kids: { on: boolean; maxAge: number; blockGenres: string[] }; // kids mode: age limit + blocked genres in every row
   customRows: { prompt: string }[]; // own AI rows ("cozy 90s sci-fi"), up to 3
   inherit: boolean; // profile follows the default profile's settings (history stays its own)
   defaultProfile: string; // only on the main profile: which profile is the default ('' = main profile)
@@ -95,6 +97,8 @@ export const DEFAULT_SETTINGS: Settings = {
   anilistUser: '',
   meta: { source: 'enhanced', localize: true, cast: true, trailers: true, episodes: true },
   hideWatched: true,
+  aiSearch: true,
+  kids: { on: false, maxAge: 12, blockGenres: ['horror', 'thriller', 'crime', 'war'] },
   customRows: [],
   inherit: true,
   defaultProfile: '',

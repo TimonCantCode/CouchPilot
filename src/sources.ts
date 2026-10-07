@@ -17,7 +17,13 @@ export type Meta = {
   description?: string;
   releaseInfo?: string;
   genres?: string[];
+  // YouTube trailer: Nuvio autoplays it on the home screen and the detail page
+  trailers?: { source: string; type: string }[];
+  trailerStreams?: { ytId: string; title: string }[];
 };
+
+const withTrailer = (m: Meta, ytId: string | null | undefined): Meta =>
+  ytId ? { ...m, trailers: [{ source: ytId, type: 'Trailer' }], trailerStreams: [{ ytId, title: m.name }] } : m;
 
 // "fetch failed" alone says nothing: add the network cause (ENOTFOUND, ECONNRESET, …) and the host
 export const netError = (err: any, url: string) =>
@@ -86,6 +92,31 @@ export const tmdbSearch = (type: Type, query: string, year: number | undefined, 
     const yearParam = year ? { [type === 'movie' ? 'primary_release_year' : 'first_air_date_year']: String(year) } : {};
     return (await tmdb(`/search/${tv(type)}`, key, { query, language: lang, ...yearParam })).results ?? [];
   });
+// Best YouTube trailer: in the user's language if there is one, otherwise English
+export const trailerOf = (type: Type, tmdbId: number, key: string, lang: string) =>
+  cached<string | null>(`tmdb:trailer:${type}:${tmdbId}:${lang}`, 7 * 86400, async () => {
+    const short = lang.slice(0, 2);
+    const { results = [] } = await tmdb(`/${tv(type)}/${tmdbId}/videos`, key, { language: lang, include_video_language: `${short},en,null` });
+    const yt = results.filter((v: any) => v.site === 'YouTube' && ['Trailer', 'Teaser'].includes(v.type));
+    const rank = (v: any) => (v.iso_639_1 === short ? 4 : 0) + (v.type === 'Trailer' ? 2 : 0) + (v.official ? 1 : 0);
+    return yt.sort((a: any, b: any) => rank(b) - rank(a))[0]?.key ?? null;
+  });
+
+// Age rating (0/6/12/16/18) and genre IDs for the kids mode. German rating first, US as fallback; null = unknown.
+const US_AGE: Record<string, number> = { G: 0, 'TV-Y': 0, 'TV-G': 0, PG: 6, 'TV-Y7': 6, 'TV-PG': 6, 'PG-13': 12, 'TV-14': 12, R: 16, 'TV-MA': 16, 'NC-17': 18 };
+export const ageInfo = (type: Type, tmdbId: number, key: string) =>
+  cached<{ age: number | null; genres: number[] }>(`tmdb:age:${type}:${tmdbId}`, 30 * 86400, async () => {
+    const d = await tmdb(`/${tv(type)}/${tmdbId}`, key, { append_to_response: type === 'movie' ? 'release_dates' : 'content_ratings' });
+    const pick = (cc: string): string | undefined =>
+      type === 'movie'
+        ? d.release_dates?.results?.find((r: any) => r.iso_3166_1 === cc)?.release_dates?.map((x: any) => x.certification).find(Boolean)
+        : d.content_ratings?.results?.find((r: any) => r.iso_3166_1 === cc)?.rating || undefined;
+    const de = pick('DE');
+    const us = pick('US');
+    const age = d.adult ? 18 : de && /^\d+$/.test(de) ? Number(de) : us && us in US_AGE ? US_AGE[us] : null;
+    return { age, genres: (d.genres ?? []).map((g: any) => g.id) };
+  });
+
 // Keyword ID by name (e.g. "christmas"), looked up once instead of hard-coding TMDB IDs
 export const tmdbKeyword = (name: string, key: string) =>
   cached<number | null>(`tmdb:kw:${name}`, 30 * 86400, async () =>
@@ -105,7 +136,8 @@ export async function toMetas(results: any[], type: Type, key: string, lang: str
       if (['ja', 'zh', 'ko'].includes(r.original_language) && gids.includes(16)) return null; // anime/donghua only in anime rows
       const imdb = await imdbFor(type, r.id, key);
       if (!imdb || animeImdb.has(imdb)) return null; // without an IMDb ID stream addons find nothing
-      return {
+      const yt = await trailerOf(type, r.id, key, lang).catch(() => null);
+      return withTrailer({
         id: imdb,
         type,
         name: r.title ?? r.name,
@@ -115,7 +147,7 @@ export async function toMetas(results: any[], type: Type, key: string, lang: str
         description: r.overview || undefined,
         releaseInfo: year(r.release_date ?? r.first_air_date),
         genres: gids.map((g) => genres[g]).filter(Boolean),
-      };
+      }, yt);
     }),
   );
   return metas.filter((m): m is Meta => m !== null);
@@ -155,7 +187,7 @@ export async function loadAnimeMap() {
   }
 }
 
-const FIELDS = 'id format title{english romaji} description coverImage{extraLarge} bannerImage genres startDate{year month day}';
+const FIELDS = 'id format title{english romaji} description coverImage{extraLarge} bannerImage genres startDate{year month day} trailer{id site}';
 
 async function anilist(query: string, variables: object): Promise<any> {
   const r = await getJson(ANILIST, {
@@ -172,7 +204,7 @@ function animeMeta(m: any, type: Type): Meta | null {
   const ids = anilistIds.get(m.id);
   const id = ids?.imdb ?? (ids?.kitsu ? `kitsu:${ids.kitsu}` : null);
   if (!id) return null;
-  return {
+  return withTrailer({
     id,
     type,
     name: m.title.english ?? m.title.romaji,
@@ -182,7 +214,7 @@ function animeMeta(m: any, type: Type): Meta | null {
     description: clean(m.description),
     releaseInfo: year(m.startDate?.year),
     genres: m.genres,
-  };
+  }, m.trailer?.site === 'youtube' ? m.trailer.id : null);
 }
 
 export function currentSeason(d = new Date()) {

@@ -1,6 +1,6 @@
-import { ensureFresh, moodName, moodSlot, personalRow, watchedIds } from './personal.ts';
-import { anilistList, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
-import { cached, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
+import { aiSearch, ensureFresh, moodName, moodSlot, personalRow, watchedIds } from './personal.ts';
+import { ageInfo, anilistList, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
+import { cached, configByUser, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
 export type Ctx = { settings: Settings; tmdbKey?: string; userId?: string };
 // "mixed" = movies and series in one row. Nuvio opens every item with its own type.
@@ -230,14 +230,39 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   if (ctx.userId) void touchSeen(ctx.userId);
   if (id === 'search') {
     const q = extra.get('search')?.trim().slice(0, 100);
-    return { metas: q && type !== 'mixed' ? await cinemetaSearch(type, q) : [] };
+    if (!q || type === 'mixed') return { metas: [] };
+    // Descriptions ("movie with the dream in a dream", 3+ words) also go to the AI; its hits come first
+    const useAi = !!ctx.userId && q.split(/\s+/).length >= 3;
+    const [plain, smart] = await Promise.all([
+      cinemetaSearch(type, q).catch(() => [] as Meta[]),
+      useAi ? configByUser(ctx.userId!).then((cfg) => aiSearch(cfg, q, type)).catch(() => [] as Meta[]) : ([] as Meta[]),
+    ]);
+    return { metas: await kidsFilter([...new Map([...smart, ...plain].map((m) => [m.id, m])).values()], ctx) };
   }
   const row = ROWS[id];
   if (!row || row.type !== type || !usable(id, ctx)) return { metas: [] };
   // ponytail: round instead of floor, filtered pages return < 20 items so skip is uneven
   const page = Math.round(Number(extra.get('skip') ?? 0) / 20) + 1;
   if (!(page >= 1 && page <= 25)) return { metas: [] };
-  return { metas: await rowMetas(id, ctx, page), cacheMaxAge: row.personal ? 600 : 3600 };
+  return { metas: await kidsFilter(await rowMetas(id, ctx, page), ctx), cacheMaxAge: row.personal ? 600 : 3600 };
+}
+
+// Kids mode: only titles with a known age rating up to the limit and none of the blocked genres
+export const KID_GENRES: Record<string, number[]> = { horror: [27], thriller: [53], crime: [80], war: [10752, 10768], romance: [10749], mystery: [9648] };
+async function kidsFilter(metas: Meta[], ctx: Ctx): Promise<Meta[]> {
+  const k = ctx.settings.kids;
+  if (!k?.on) return metas;
+  if (!ctx.tmdbKey) return []; // can't check ratings without TMDB: show nothing rather than something unsuitable
+  const blocked = new Set(k.blockGenres.flatMap((g) => KID_GENRES[g] ?? []));
+  const ok = await Promise.all(
+    metas.map(async (m) => {
+      if (!m.id.startsWith('tt')) return false;
+      const id = await tmdbIdFor(m.type, m.id, ctx.tmdbKey!).catch(() => null);
+      const a = id ? await ageInfo(m.type, id, ctx.tmdbKey!).catch(() => null) : null;
+      return !!a && a.age !== null && a.age <= k.maxAge && !a.genres.some((g) => blocked.has(g));
+    }),
+  );
+  return metas.filter((_, i) => ok[i]);
 }
 
 // Metadata: plain Cinemeta, or Cinemeta + TMDB (localized texts, logos, cast, trailers, episode stills) when a TMDB key is set

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import { catalog, defaultName, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
+import { catalog, defaultName, KID_GENRES, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
+import { KID_AGES } from './web.ts';
 import { assertPublicUrl, PROVIDERS } from './ai.ts';
 import { hashPassword, verifyPassword } from './crypto.ts';
 import { nuvioProfileList, nuvioSignIn, SIMKL_ID, simklPin, simklPoll, TRAKT_ID, traktDeviceCode, traktPoll } from './history.ts';
@@ -346,6 +347,12 @@ app.post('/configure', auth, async (req, res) => {
     aiPrompt: field(b.aiPrompt).slice(0, 500),
     aiReasons: b.aiReasons === '1',
     hideWatched: b.hideWatched === '1',
+    aiSearch: b.aiSearch === '1',
+    kids: {
+      on: b.kidsOn === '1',
+      maxAge: KID_AGES.includes(Number(b.kidsAge)) ? Number(b.kidsAge) : DEFAULT_SETTINGS.kids.maxAge,
+      blockGenres: list(b.kidsBlock).filter((g) => g in KID_GENRES),
+    },
     customRows,
     meta: {
       source: b.metaSource === 'cinemeta' ? 'cinemeta' : 'enhanced',
@@ -414,7 +421,7 @@ app.post('/export', auth, async (req, res) => {
     exportedAt: new Date().toISOString(),
     settings: {
       rows: s.rows, order: s.order, names: s.names, refreshHours: s.refreshHours, language: s.language, timezone: s.timezone,
-      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, customRows: s.customRows,
+      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, customRows: s.customRows, aiSearch: s.aiSearch, kids: s.kids,
     },
   };
   // Keys only on request; Nuvio/Trakt/Simkl logins are never exported (rotating tokens must exist only once)
@@ -462,6 +469,12 @@ app.post('/import', auth, async (req, res) => {
     },
     anilistUser: /^[A-Za-z0-9_-]{2,20}$/.test(anilist) ? anilist : '',
     hideWatched: i.hideWatched !== false,
+    aiSearch: i.aiSearch !== false,
+    kids: {
+      on: i.kids?.on === true,
+      maxAge: KID_AGES.includes(Number(i.kids?.maxAge)) ? Number(i.kids.maxAge) : DEFAULT_SETTINGS.kids.maxAge,
+      blockGenres: (Array.isArray(i.kids?.blockGenres) ? i.kids.blockGenres : DEFAULT_SETTINGS.kids.blockGenres).map(String).filter((g: string) => g in KID_GENRES),
+    },
     customRows: (Array.isArray(i.customRows) ? i.customRows : []).slice(0, 3).map((r: any) => ({ prompt: clean(r?.prompt, 150) })),
   };
   const tmdbKey = clean(x.keys?.tmdbKey, 400);
