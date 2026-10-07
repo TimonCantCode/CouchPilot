@@ -31,7 +31,7 @@ Your couch, on autopilot: an unofficial, self-hosted Cinemeta replacement for Nu
 | API keys and OAuth tokens | AES-256-GCM, bound to their owner (AAD), never sent to the browser |
 | Master key | Docker secret (`secrets/master_key`), not in `.env`, not in `docker inspect`, not in DB backups |
 | DB leak alone | useless: no keys without the master key, install tokens only usable as hashes, passwords use scrypt |
-| Leaked install URL | attacker can change settings but cannot read keys. Switching the AI provider or Ollama URL deletes the stored AI key. "Generate new URL" locks them out |
+| Leaked install URL | attacker can change settings but cannot read keys (exporting keys needs a log-in with password). Switching the AI provider or Ollama URL deletes the stored AI key. "Generate new URL" locks them out |
 | Ollama URL | https only, private/internal IPs blocked at connect time (also against DNS rebinding) |
 | Abuse | rate limits per IP, per install URL and per user; max 40 AI calls per day and user; max 6 manual recomputes per hour; account creation limited per IP and globally |
 | Web | CSRF check (Origin), SameSite and `__Host-` cookie, CSP with nonce, sessions ended everywhere on password or URL change |
@@ -87,8 +87,10 @@ Nuvio Sync and AniList need no setup.
 
 ```
 npm install
-npm test        # crypto and parser checks
+npm test        # unit tests (crypto, parsers, rows, trailers, age ratings)
 npm run check   # type check
+# end-to-end: real server + Postgres + Redis, external APIs mocked. Uses an EMPTY database, it gets wiped:
+TEST_DATABASE_URL=postgres://… TEST_REDIS_URL=redis://…/1 npm run test:e2e
 ```
 
 ## Legal & attribution

@@ -1,5 +1,5 @@
 import { aiSearch, ensureFresh, moodName, moodSlot, personalRow, watchedIds } from './personal.ts';
-import { ageInfo, anilistList, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
+import { ageFrom, anilistList, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
 import { cached, configByUser, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
 export type Ctx = { settings: Settings; tmdbKey?: string; userId?: string };
@@ -258,8 +258,9 @@ async function kidsFilter(metas: Meta[], ctx: Ctx): Promise<Meta[]> {
     metas.map(async (m) => {
       if (!m.id.startsWith('tt')) return false;
       const id = await tmdbIdFor(m.type, m.id, ctx.tmdbKey!).catch(() => null);
-      const a = id ? await ageInfo(m.type, id, ctx.tmdbKey!).catch(() => null) : null;
-      return !!a && a.age !== null && a.age <= k.maxAge && !a.genres.some((g) => blocked.has(g));
+      const d = id ? await tmdbDetails(m.type, id, ctx.tmdbKey!, ctx.settings.language).catch(() => null) : null;
+      const age = d ? ageFrom(d, m.type) : null;
+      return age !== null && age <= k.maxAge && !(d.genres ?? []).some((g: any) => blocked.has(g.id));
     }),
   );
   return metas.filter((_, i) => ok[i]);

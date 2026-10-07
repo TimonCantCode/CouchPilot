@@ -4,7 +4,8 @@ import { Redis } from 'ioredis';
 import { decrypt, encrypt, randomToken, sha256 } from './crypto.ts';
 
 export const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
-export const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+// lazyConnect: importing this file (e.g. in unit tests) opens no connection, the first command does
+export const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', { lazyConnect: true });
 
 export async function migrate() {
   await db.query(fs.readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
@@ -12,12 +13,22 @@ export async function migrate() {
 
 // ---------- Cache & Rate-Limit ----------
 
+// Parallel requests for the same key share one fetch (e.g. a row and the kids filter asking for the same title)
+const inflight = new Map<string, Promise<unknown>>();
 export async function cached<T>(key: string, ttlSec: number, fn: () => Promise<T>): Promise<T> {
   const hit = await redis.get(key);
   if (hit) return JSON.parse(hit) as T;
-  const value = await fn();
-  await redis.set(key, JSON.stringify(value), 'EX', ttlSec);
-  return value;
+  let p = inflight.get(key) as Promise<T> | undefined;
+  if (!p) {
+    p = fn()
+      .then(async (value) => {
+        await redis.set(key, JSON.stringify(value), 'EX', ttlSec);
+        return value;
+      })
+      .finally(() => inflight.delete(key));
+    inflight.set(key, p);
+  }
+  return p;
 }
 
 // ponytail: fixed-window counter, enough against brute force and spam; sliding window if bursts become a problem
@@ -31,13 +42,17 @@ export async function rateLimit(key: string, max: number, windowSec: number): Pr
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
 
-export async function createSession(userId: string): Promise<string> {
+// viaPassword: logged in with account ID + password (not via the install URL). Only those sessions may export keys.
+export async function createSession(userId: string, viaPassword = false): Promise<string> {
   const sid = randomToken();
   const h = sha256(sid);
-  await redis.multi().set(`sess:${h}`, userId, 'EX', SESSION_TTL).sadd(`usess:${userId}`, h).expire(`usess:${userId}`, SESSION_TTL).exec();
+  await redis.multi().set(`sess:${h}`, viaPassword ? `${userId}:pw` : userId, 'EX', SESSION_TTL).sadd(`usess:${userId}`, h).expire(`usess:${userId}`, SESSION_TTL).exec();
   return sid;
 }
-export const sessionUser = (sid: string) => redis.get(`sess:${sha256(sid)}`);
+export async function sessionUser(sid: string): Promise<{ userId: string; viaPassword: boolean } | null> {
+  const v = await redis.get(`sess:${sha256(sid)}`);
+  return v ? { userId: v.replace(/:pw$/, ''), viaPassword: v.endsWith(':pw') } : null;
+}
 export const destroySession = (sid: string) => redis.del(`sess:${sha256(sid)}`);
 
 // End all sessions of a user (password changed, URL regenerated, account deleted)

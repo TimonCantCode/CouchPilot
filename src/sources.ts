@@ -42,13 +42,36 @@ const year = (d?: string | number | null) => (d ? String(d).slice(0, 4) : undefi
 
 // ---------- TMDB ----------
 
+// TMDB allows roughly 40 requests per second: at most 8 at a time, one retry after a 429
+// ponytail: one limiter for the whole server, per-key limiters if many people share an instance
+const TMDB_PARALLEL = 8;
+let tmdbActive = 0;
+const tmdbQueue: (() => void)[] = [];
+async function throttled<T>(fn: () => Promise<T>): Promise<T> {
+  if (tmdbActive >= TMDB_PARALLEL) await new Promise<void>((r) => tmdbQueue.push(r));
+  tmdbActive++;
+  try {
+    return await fn();
+  } finally {
+    tmdbActive--;
+    tmdbQueue.shift()?.();
+  }
+}
+
 // Accepts a v3 API key and a v4 read token (starts with eyJ)
 function tmdb(path: string, key: string, params: Record<string, string> = {}): Promise<any> {
   const url = new URL(TMDB + path);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const bearer = key.startsWith('eyJ');
   if (!bearer) url.searchParams.set('api_key', key);
-  return getJson(url.toString(), bearer ? { headers: { Authorization: `Bearer ${key}` } } : undefined);
+  const init = bearer ? { headers: { Authorization: `Bearer ${key}` } } : undefined;
+  return throttled(() =>
+    getJson(url.toString(), init).catch(async (err) => {
+      if (!String(err.message).startsWith('429')) throw err;
+      await new Promise((r) => setTimeout(r, 2000));
+      return getJson(url.toString(), init);
+    }),
+  );
 }
 
 export const checkTmdbKey = (key: string) => tmdb('/configuration', key).then(() => true, () => false);
@@ -77,10 +100,16 @@ export const tmdbResults = (path: string, key: string, page: number, lang: strin
   cached<any[]>(`tmdb:res:${path}:${page}:${lang}`, 12 * 3600, async () =>
     (await tmdb(path, key, { page: String(page), language: lang })).results ?? []);
 
+// One call per title with everything the rows need: details, IMDb ID, trailer, age rating.
+// Series refresh after 12 h (next episode dates), movies after 3 days.
 export const tmdbDetails = (type: Type, tmdbId: number, key: string, lang: string) =>
-  cached<any>(`tmdb:det:${type}:${tmdbId}:${lang}`, 12 * 3600, () => tmdb(`/${tv(type)}/${tmdbId}`, key, { language: lang }));
+  cached<any>(`tmdb:item:${type}:${tmdbId}:${lang}`, type === 'series' ? 12 * 3600 : 3 * 86400, () =>
+    tmdb(`/${tv(type)}/${tmdbId}`, key, {
+      language: lang,
+      append_to_response: `external_ids,videos,${type === 'movie' ? 'release_dates' : 'content_ratings'}`,
+      include_video_language: `${lang.slice(0, 2)},en,null`,
+    }));
 
-// Discover with several genres (AND), well-known titles only
 export const tmdbCollection = (id: number, key: string, lang: string) =>
   cached<any>(`tmdb:coll:${id}:${lang}`, 7 * 86400, () => tmdb(`/collection/${id}`, key, { language: lang }));
 export const tmdbCredits = (type: Type, id: number, key: string) =>
@@ -92,30 +121,25 @@ export const tmdbSearch = (type: Type, query: string, year: number | undefined, 
     const yearParam = year ? { [type === 'movie' ? 'primary_release_year' : 'first_air_date_year']: String(year) } : {};
     return (await tmdb(`/search/${tv(type)}`, key, { query, language: lang, ...yearParam })).results ?? [];
   });
-// Best YouTube trailer: in the user's language if there is one, otherwise English
-export const trailerOf = (type: Type, tmdbId: number, key: string, lang: string) =>
-  cached<string | null>(`tmdb:trailer:${type}:${tmdbId}:${lang}`, 7 * 86400, async () => {
-    const short = lang.slice(0, 2);
-    const { results = [] } = await tmdb(`/${tv(type)}/${tmdbId}/videos`, key, { language: lang, include_video_language: `${short},en,null` });
-    const yt = results.filter((v: any) => v.site === 'YouTube' && ['Trailer', 'Teaser'].includes(v.type));
-    const rank = (v: any) => (v.iso_639_1 === short ? 4 : 0) + (v.type === 'Trailer' ? 2 : 0) + (v.official ? 1 : 0);
-    return yt.sort((a: any, b: any) => rank(b) - rank(a))[0]?.key ?? null;
-  });
+// Best YouTube trailer from the details call: in the user's language if there is one, otherwise English
+export const trailerFrom = (d: any, lang: string): string | null => {
+  const short = lang.slice(0, 2);
+  const yt = (d?.videos?.results ?? []).filter((v: any) => v.site === 'YouTube' && ['Trailer', 'Teaser'].includes(v.type));
+  const rank = (v: any) => (v.iso_639_1 === short ? 4 : 0) + (v.type === 'Trailer' ? 2 : 0) + (v.official ? 1 : 0);
+  return yt.sort((a: any, b: any) => rank(b) - rank(a))[0]?.key ?? null;
+};
 
-// Age rating (0/6/12/16/18) and genre IDs for the kids mode. German rating first, US as fallback; null = unknown.
+// Age rating (0/6/12/16/18) for the kids mode: German rating first, US as fallback; null = unknown
 const US_AGE: Record<string, number> = { G: 0, 'TV-Y': 0, 'TV-G': 0, PG: 6, 'TV-Y7': 6, 'TV-PG': 6, 'PG-13': 12, 'TV-14': 12, R: 16, 'TV-MA': 16, 'NC-17': 18 };
-export const ageInfo = (type: Type, tmdbId: number, key: string) =>
-  cached<{ age: number | null; genres: number[] }>(`tmdb:age:${type}:${tmdbId}`, 30 * 86400, async () => {
-    const d = await tmdb(`/${tv(type)}/${tmdbId}`, key, { append_to_response: type === 'movie' ? 'release_dates' : 'content_ratings' });
-    const pick = (cc: string): string | undefined =>
-      type === 'movie'
-        ? d.release_dates?.results?.find((r: any) => r.iso_3166_1 === cc)?.release_dates?.map((x: any) => x.certification).find(Boolean)
-        : d.content_ratings?.results?.find((r: any) => r.iso_3166_1 === cc)?.rating || undefined;
-    const de = pick('DE');
-    const us = pick('US');
-    const age = d.adult ? 18 : de && /^\d+$/.test(de) ? Number(de) : us && us in US_AGE ? US_AGE[us] : null;
-    return { age, genres: (d.genres ?? []).map((g: any) => g.id) };
-  });
+export function ageFrom(d: any, type: Type): number | null {
+  const pick = (cc: string): string | undefined =>
+    type === 'movie'
+      ? d?.release_dates?.results?.find((r: any) => r.iso_3166_1 === cc)?.release_dates?.map((x: any) => x.certification).find(Boolean)
+      : d?.content_ratings?.results?.find((r: any) => r.iso_3166_1 === cc)?.rating || undefined;
+  const de = pick('DE');
+  const us = pick('US');
+  return d?.adult ? 18 : de && /^\d+$/.test(de) ? Number(de) : us && us in US_AGE ? US_AGE[us] : null;
+}
 
 // Keyword ID by name (e.g. "christmas"), looked up once instead of hard-coding TMDB IDs
 export const tmdbKeyword = (name: string, key: string) =>
@@ -134,9 +158,11 @@ export async function toMetas(results: any[], type: Type, key: string, lang: str
     results.map(async (r: any): Promise<Meta | null> => {
       const gids: number[] = r.genre_ids ?? r.genres?.map((g: any) => g.id) ?? [];
       if (['ja', 'zh', 'ko'].includes(r.original_language) && gids.includes(16)) return null; // anime/donghua only in anime rows
-      const imdb = await imdbFor(type, r.id, key);
+      // details include IMDb ID and trailer; fall back to the cheap external_ids lookup if they fail
+      const d = await tmdbDetails(type, r.id, key, lang).catch(() => null);
+      const imdb = d ? d.external_ids?.imdb_id || null : await imdbFor(type, r.id, key);
       if (!imdb || animeImdb.has(imdb)) return null; // without an IMDb ID stream addons find nothing
-      const yt = await trailerOf(type, r.id, key, lang).catch(() => null);
+      const yt = trailerFrom(d, lang);
       return withTrailer({
         id: imdb,
         type,

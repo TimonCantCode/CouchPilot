@@ -295,6 +295,7 @@ export function configPage(o: {
   inheritedFrom?: string;
   nuvioShared?: boolean;
   hasPassword: boolean;
+  viaPassword: boolean;
   installUrl: string;
   settings: Settings;
   secrets: Secrets;
@@ -521,7 +522,7 @@ ${o.secrets.nuvio ? `<form method="post" action="/profile/sync"><div class="acti
 <div class="actions"><button class="ghost">${o.hasPassword ? 'Change password' : 'Save password'}</button></div></form>
 <h3>Backup</h3>
 <p class="small muted" style="margin:0 0 8px">Don’t want a password? Export your settings as a file and import them later or on another instance. Watch-history logins are never included.</p>
-<form method="post" action="/export"><label class="check"><input class="sw" type="checkbox" name="keys" value="1">Include TMDB and AI keys (keep the file private)</label>
+<form method="post" action="/export">${o.viaPassword ? '<label class="check"><input class="sw" type="checkbox" name="keys" value="1">Include TMDB and AI keys (keep the file private)</label>' : '<p class="small muted" style="margin:0">Keys are only included when you are logged in with account ID and password, so a leaked install URL can never reveal them.</p>'}
 <div class="actions"><button class="ghost">Export settings</button></div></form>
 <form method="post" action="/import" id="importform"><input type="hidden" name="data" id="importdata">
 <div class="actions"><label class="btn ghost" style="margin:0">Import settings<input type="file" accept="application/json,.json" id="importfile" hidden></label></div></form>

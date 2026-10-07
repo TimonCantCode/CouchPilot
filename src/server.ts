@@ -115,8 +115,9 @@ const getCookie = (req: Request, name: string) => {
   }
 };
 
-async function login(res: Response, userId: string, to = '/configure') {
-  res.cookie(COOKIE, await createSession(userId), { httpOnly: true, secure: HTTPS, sameSite: 'lax', maxAge: 30 * 86400 * 1000, path: '/' });
+// Switching profiles keeps the way you logged in (password or install URL)
+async function login(res: Response, userId: string, to = '/configure', viaPassword = res.locals.viaPassword === true) {
+  res.cookie(COOKIE, await createSession(userId, viaPassword), { httpOnly: true, secure: HTTPS, sameSite: 'lax', maxAge: 30 * 86400 * 1000, path: '/' });
   res.redirect(303, to);
 }
 
@@ -162,7 +163,7 @@ app.post('/login', async (req, res) => {
   const { rows } = UUID_RE.test(accountId) ? await db.query('select id, pw_hash from users where id = $1 and parent_id is null', [accountId]) : { rows: [] };
   const valid = await verifyPassword(field(req.body.password).slice(0, 200), rows[0]?.pw_hash ?? DUMMY_HASH);
   if (!rows[0]?.pw_hash || !valid) return page(res, () => loginPage('Wrong account ID or password.', SUPPORT_URL), 401);
-  await login(res, rows[0].id);
+  await login(res, rows[0].id, '/configure', true);
 });
 
 app.post('/logout', async (req, res) => {
@@ -175,9 +176,11 @@ app.post('/logout', async (req, res) => {
 
 const auth = async (req: Request, res: Response, next: NextFunction) => {
   const sid = getCookie(req, COOKIE);
-  const userId = sid ? await sessionUser(sid) : null;
-  if (!userId) return void res.redirect(303, '/login');
+  const session = sid ? await sessionUser(sid) : null;
+  if (!session) return void res.redirect(303, '/login');
+  const userId = session.userId;
   res.locals.userId = userId;
+  res.locals.viaPassword = session.viaPassword;
   res.locals.sid = sid;
   // Limit actions per user (protects keys in case someone knows the install URL)
   if (req.method === 'POST' && !(await rateLimit(`post:${userId}`, 60, 600))) return void res.status(429).send('Too many actions, please wait a moment.');
@@ -219,6 +222,7 @@ async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, 
         inheritedFrom: cfg.inheritedFrom,
         nuvioShared: !!cfg.nuvioOwner && cfg.nuvioOwner !== userId,
         hasPassword: pw.rows[0].has,
+        viaPassword: res.locals.viaPassword === true,
         installUrl: `${PUBLIC_URL}/${cfg.token}/manifest.json`,
         settings: cfg.settings,
         secrets: cfg.secrets,
@@ -425,6 +429,9 @@ app.post('/export', auth, async (req, res) => {
     },
   };
   // Keys only on request; Nuvio/Trakt/Simkl logins are never exported (rotating tokens must exist only once)
+  // A leaked install URL must never reveal keys: exporting them needs a log-in with password
+  if (req.body.keys === '1' && !res.locals.viaPassword)
+    return renderConfig(res, { ok: false, text: 'Exporting keys needs a log-in with account ID and password. Settings without keys can be exported anytime.' }, 403);
   if (req.body.keys === '1') data.keys = { tmdbKey: cfg.secrets.tmdbKey, aiKey: cfg.secrets.aiKey };
   res.set({ 'Content-Type': 'application/json', 'Content-Disposition': `attachment; filename="couchpilot-settings-${new Date().toISOString().slice(0, 10)}.json"` });
   res.send(JSON.stringify(data, null, 2));
@@ -435,7 +442,7 @@ app.post('/import', auth, async (req, res) => {
   let x: any;
   try {
     x = JSON.parse(String(req.body.data ?? ''));
-    if (x?.app !== 'couchpilot' || typeof x.settings !== 'object') throw 0;
+    if (x?.app !== 'couchpilot' || !x.settings || typeof x.settings !== 'object' || Array.isArray(x.settings)) throw 0;
   } catch {
     return renderConfig(res, { ok: false, text: 'This is not a Couchpilot settings file.' }, 400);
   }
@@ -700,4 +707,4 @@ setInterval(async () => {
     console.error('cleanup:', (err as Error).message);
   }
 }, 6 * 3600 * 1000).unref();
-app.listen(PORT, () => console.log(`Couchpilot running at ${PUBLIC_URL}`));
+export const server = app.listen(PORT, () => console.log(`Couchpilot running at ${PUBLIC_URL}`));

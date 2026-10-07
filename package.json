@@ -12,7 +12,8 @@
     "start": "node --experimental-strip-types src/server.ts",
     "dev": "node --experimental-strip-types --env-file=.env --watch src/server.ts",
     "check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/*.test.ts"
+    "test": "node --experimental-strip-types --test src/*.test.ts",
+    "test:e2e": "node --experimental-strip-types --test --test-concurrency=1 src/e2e.test.ts"
   },
   "dependencies": {
     "express": "^5.2.1",
