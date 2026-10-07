@@ -147,11 +147,12 @@ main:has(.home){max-width:1040px}
 `;
 
 // Attribution required by TMDB, plus "unofficial" notice and optional legal links (IMPRINT_URL / PRIVACY_URL)
+const REPO = 'https://github.com/TimonCantCode/CouchPilot';
 const legal = { imprint: process.env.IMPRINT_URL, privacy: process.env.PRIVACY_URL };
 const safeUrl = (u?: string) => (u && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : '');
 const FOOTER = `<footer class="foot"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB" width="90" height="12"></a>
 <p>This product uses the TMDB API but is not endorsed or certified by TMDB. Couchpilot is an unofficial community project and not affiliated with Nuvio, TMDB, AniList, Trakt or Simkl.</p>
-${[safeUrl(legal.imprint) && `<a href="${esc(safeUrl(legal.imprint))}" target="_blank" rel="noopener noreferrer">Imprint</a>`, safeUrl(legal.privacy) && `<a href="${esc(safeUrl(legal.privacy))}" target="_blank" rel="noopener noreferrer">Privacy</a>`].filter(Boolean).join(' · ')}</footer>`;
+${[`<a href="${REPO}" target="_blank" rel="noopener noreferrer">Source code on GitHub</a>`, safeUrl(legal.imprint) && `<a href="${esc(safeUrl(legal.imprint))}" target="_blank" rel="noopener noreferrer">Imprint</a>`, safeUrl(legal.privacy) && `<a href="${esc(safeUrl(legal.privacy))}" target="_blank" rel="noopener noreferrer">Privacy</a>`].filter(Boolean).join(' · ')}</footer>`;
 
 const page = (title: string, body: string, nonce = '', script = '') => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -168,12 +169,12 @@ const previewRow = (name: string, hues: number[]) =>
 export const homePage = (publicUrl: string, supportUrl?: string, error?: string) =>
   page(
     'Home',
-    `<div class="home">${brand(`${support(supportUrl)}<a class="btn ghost" href="/login">Log in</a>`)}
+    `<div class="home">${brand(`${support(supportUrl)}<a class="btn ghost" href="${REPO}" target="_blank" rel="noopener noreferrer">GitHub</a><a class="btn ghost" href="/login">Log in</a>`)}
 ${error ? `<div class="note err">${esc(error)}</div>` : ''}
 <h1>Your couch,<br>on autopilot.</h1>
 <p class="lead">Couchpilot turns Nuvio into a personal streaming home: rows built from what you actually watch, ranked by the AI of your choice, with better metadata than Cinemeta.</p>
 <div class="cta"><form method="post" action="/start"><button>Configure now</button></form><a class="btn ghost" href="#how">How it works</a></div>
-<ul class="trust"><li>Free and open source</li><li>No account needed</li><li>Your keys stay encrypted</li><li>Read-only access to your history</li></ul>
+<ul class="trust"><li>Free and <a href="${REPO}" target="_blank" rel="noopener noreferrer">open source</a></li><li>No account needed</li><li>Your keys stay encrypted</li><li>Read-only access to your history</li></ul>
 
 <div class="preview" aria-hidden="true">
 ${previewRow('Top Picks for You', [350, 210, 30, 280, 160, 5, 240, 120, 320])}
