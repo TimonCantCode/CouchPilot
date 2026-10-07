@@ -8,12 +8,14 @@ Your couch, on autopilot: an unofficial, self-hosted Cinemeta replacement for Nu
 
 - **Standard rows:** Trending, Popular, New, Top Rated for movies and series (TMDB), anime via AniList.
 - **Mix rows:** movies and series in one row ("Trending Now", "Top Picks for You" …). Nuvio opens every item with its own type.
-- **For You** (★): Top Picks, Because You Watched X, new episodes of your shows, genre mixes with AI titles, a time-of-day row (feel-good during the day, late night thrills, weekend movie night) and anime picks.
+- **For You** (★): Complete the Saga (next part of film series you started), More from … (your most-watched director or actor), Coming Soon (upcoming movies in your genres + new seasons/episodes of your shows), up to 3 own AI rows from a text prompt (“cozy 90s sci-fi”), plus Top Picks, Because You Watched X, new episodes of your shows, genre mixes with AI titles, a time-of-day row (feel-good during the day, late night thrills, weekend movie night) and anime picks.
 - **History sources:** Nuvio Sync, Trakt, Simkl, AniList (public list by username). Read-only.
 - **AI:** OpenAI, Anthropic, Gemini, OpenRouter, Ollama with your own key. Ranks, names mixes and writes short reasons into the description. Without AI you get a default ranking.
 - **Metadata:** "Enhanced" keeps Cinemeta's IMDb rating and episode IDs (what stream addons expect) and adds TMDB: localized titles, descriptions, genres and episode names, HD backgrounds, localized posters and title logos, cast/director, YouTube trailers, episode thumbnails. Each part can be switched off; "Cinemeta only" is available too.
 - **AI cost:** the AI section shows real token usage of the last 30 days and an estimated monthly cost for the chosen refresh interval.
 - **Backup:** export/import your settings as a JSON file (optionally with TMDB/AI keys), so you don't need a password.
+- **Hide watched:** Trending, Popular, New and the other standard rows skip what the profile has already watched (per profile, on by default).
+- **Seasonal row:** Halloween horror in October, Christmas movies in December, hidden the rest of the year.
 - **Usability:** works without an account; show/hide, rename and reorder rows; optional password.
 - **Profiles:** connecting Nuvio Sync imports your Nuvio profiles, each with its own watch history and install URL. Switch profiles at the top of the config page, then save for all profiles or only the open one (e.g. German metadata for one profile, English for another). Recompute one or all profiles.
 - **Precompute:** a background job keeps rows of active users fresh, the app only reads finished results. The config page shows live progress.
@@ -50,6 +52,14 @@ What no software can prevent: whoever fully takes over the running server (root 
 3. Start:
    - Locally: `docker compose -f docker-compose.yml -f docker-compose.local.yml up --build`, then open `http://localhost:7000`
    - VPS: `docker compose up -d --build`, Caddy gets the HTTPS certificate automatically
+4. Update later: `sh update.sh` (pull, rebuild, clean up old images)
+
+## Backups and operations
+
+- **Database:** the `backup` container writes a dump to `backups/couchpilot-YYYY-MM-DD.sql.gz` once a day and keeps the last 7 days. Copy the folder off the server now and then (`scp -r root@your-server:~/couchpilot/backups .`). Restore into a fresh install: `gunzip -c backups/couchpilot-DATE.sql.gz | docker compose exec -T postgres psql -U nuvio nuvio`.
+- **Master key:** not part of the dump on purpose. Keep `secrets/master_key` somewhere else, without it the keys in a backup can't be read.
+- **Logs:** capped at 3 × 10 MB per container. `docker compose logs addon --tail 100` shows the latest.
+- **Health checks:** Postgres, Redis and the addon report their health (`docker compose ps`), the addon starts only when the database is ready, and crashed containers restart automatically.
 
 ## Troubleshooting
 

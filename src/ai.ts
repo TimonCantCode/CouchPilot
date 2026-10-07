@@ -103,6 +103,21 @@ export async function complete(cfg: AiConfig, key: string | undefined, system: s
 
 export type Pick = { i: number; why?: string };
 
+// Own AI rows: {"title": "...", "items": [{"name": "...", "year": 1999, "type": "movie"|"series"}]}
+export function parseItems(text: string): { title: string; items: { name: string; year?: number; type: 'movie' | 'series' }[] } {
+  const clean = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n);
+  try {
+    const j = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '');
+    const items = (Array.isArray(j.items) ? j.items : [])
+      .slice(0, 40)
+      .map((x: any) => ({ name: clean(x?.name, 120), year: Number.isInteger(x?.year) ? x.year : undefined, type: x?.type === 'series' ? ('series' as const) : ('movie' as const) }))
+      .filter((x: { name: string }) => x.name);
+    return { title: clean(j.title, 50), items };
+  } catch {
+    return { title: '', items: [] };
+  }
+}
+
 // Extracts indices (and optional short reasons) from the AI reply; anything broken is ignored.
 // Reasons are untrusted text: control characters stripped, length capped.
 export function parsePicks(text: string, max: number): Pick[] {

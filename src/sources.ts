@@ -75,6 +75,22 @@ export const tmdbDetails = (type: Type, tmdbId: number, key: string, lang: strin
   cached<any>(`tmdb:det:${type}:${tmdbId}:${lang}`, 12 * 3600, () => tmdb(`/${tv(type)}/${tmdbId}`, key, { language: lang }));
 
 // Discover with several genres (AND), well-known titles only
+export const tmdbCollection = (id: number, key: string, lang: string) =>
+  cached<any>(`tmdb:coll:${id}:${lang}`, 7 * 86400, () => tmdb(`/collection/${id}`, key, { language: lang }));
+export const tmdbCredits = (type: Type, id: number, key: string) =>
+  cached<any>(`tmdb:cred:${type}:${id}`, 7 * 86400, () => tmdb(`/${tv(type)}/${id}/credits`, key));
+export const tmdbPersonMovies = (id: number, key: string, lang: string) =>
+  cached<any>(`tmdb:pmov:${id}:${lang}`, 86400, () => tmdb(`/person/${id}/movie_credits`, key, { language: lang }));
+export const tmdbSearch = (type: Type, query: string, year: number | undefined, key: string, lang: string) =>
+  cached<any[]>(`tmdb:search:${type}:${query}:${year ?? ''}:${lang}`, 7 * 86400, async () => {
+    const yearParam = year ? { [type === 'movie' ? 'primary_release_year' : 'first_air_date_year']: String(year) } : {};
+    return (await tmdb(`/search/${tv(type)}`, key, { query, language: lang, ...yearParam })).results ?? [];
+  });
+// Keyword ID by name (e.g. "christmas"), looked up once instead of hard-coding TMDB IDs
+export const tmdbKeyword = (name: string, key: string) =>
+  cached<number | null>(`tmdb:kw:${name}`, 30 * 86400, async () =>
+    ((await tmdb('/search/keyword', key, { query: name })).results ?? []).find((k: any) => k.name?.toLowerCase() === name)?.id ?? null);
+
 export const discoverPath = (type: Type, genres: number[]) =>
   `/discover/${tv(type)}?with_genres=${genres.join(',')}&sort_by=popularity.desc&vote_count.gte=150`;
 

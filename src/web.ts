@@ -1,4 +1,4 @@
-import { orderedRowIds, ROWS } from './addon.ts';
+import { defaultName, isOn, orderedRowIds, ROWS } from './addon.ts';
 import { EST_CALL, EST_CALLS_PER_RUN, priceFor, PROVIDERS } from './ai.ts';
 import { mask } from './crypto.ts';
 import type { Secrets, Settings } from './store.ts';
@@ -82,9 +82,14 @@ form:has(#metaSource option[value=cinemeta]:checked) .meta-only{display:none}
 .job .dot{margin:0;align-self:center}.job.done .dot{background:var(--ok)}.job.error .dot{background:var(--accent)}
 .job.running .dot,.job.queued .dot{background:#f5a524;animation:pulse .9s infinite alternate}@keyframes pulse{to{opacity:.25}}
 .jobs.single .job{grid-template-columns:auto 1fr}.jobs.single .job b{display:none}
+details.more{margin-top:12px;border:1px dashed var(--line);border-radius:12px;padding:4px 12px}
+details.more>summary{cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 0;font-weight:600;list-style:none}
+details.more>summary::-webkit-details-marker{display:none}details.more>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+details.more[open]>summary::before{transform:rotate(90deg)}details.more>summary .small{margin-left:auto;font-weight:400}
+details.more .rows{padding-bottom:10px}#rowmore .handle,#rowmore .mv{visibility:hidden}
 details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}details.adv>summary{cursor:pointer;font-weight:600}
 /* Save bar */
-.bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px;background:var(--bg);border-top:1px solid var(--line)}
+.bar{position:fixed;z-index:20;left:0;right:0;bottom:0;padding:12px 16px;background:var(--bg);border-top:1px solid var(--line)}
 .bar>div{max-width:680px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .install input{font:13px ui-monospace,monospace}
 .top{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.top .btn,.top button{padding:7px 12px;font-size:13px}
@@ -109,11 +114,36 @@ main:has(.shell){max-width:1100px}
 #dirty{color:#ffb4b8}
 .shell~.foot{margin-left:262px}
 @media (max-width:860px){
+  details.more>summary .small{display:none}
   .shell{display:block}.burger{display:inline-flex}.pl,#dirty{display:none!important}.pager{max-width:none}.bar button{padding:10px 11px;font-size:14px;white-space:nowrap}.bar .actions{gap:6px}.bar>div.wide{padding:0}.shell~.foot{margin-left:0}
   .side{position:fixed;z-index:30;top:0;left:0;bottom:0;width:min(300px,84vw);overflow-y:auto;background:var(--bg);border-right:1px solid var(--line);padding:20px 12px;transform:translateX(-102%);transition:transform .2s}
   .nav-open .side{transform:none}.nav-open .scrim{display:block;position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.55)}
 }
 .hero-cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-top:24px}
+/* Home page */
+main:has(.home){max-width:1040px}
+.home h1{font-size:clamp(38px,6vw,58px);margin-top:8px}
+.home .lead{max-width:620px;font-size:18px}
+.home .cta{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.home .cta button,.home .cta .btn{padding:13px 22px;font-size:16px}
+.home .trust{display:flex;flex-wrap:wrap;gap:6px 16px;margin:14px 0 0;padding:0;list-style:none;color:var(--muted);font-size:13px}
+.home .trust li::before{content:"✓ ";color:var(--ok)}
+.home h2{font-size:24px;letter-spacing:-.02em;margin:64px 0 6px}
+.home h2+p{color:var(--muted);margin:0 0 18px}
+.preview{margin:44px 0 0;padding:18px 0 4px;border-radius:var(--r);background:linear-gradient(180deg,var(--panel),transparent);border:1px solid var(--line);overflow:hidden}
+.preview .pr{padding:0 18px 14px}.preview b{display:block;font-size:14px;margin:0 0 8px}
+.preview .tiles{display:flex;gap:8px;overflow:hidden;mask-image:linear-gradient(90deg,#000 75%,transparent)}
+.preview .t{flex:none;width:96px;aspect-ratio:2/3;border-radius:8px;background:linear-gradient(160deg,hsl(var(--h) 60% 38%),hsl(calc(var(--h) + 40) 50% 14%));box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.feat{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.feat .sec{margin:0}.feat h3{color:var(--text);text-transform:none;letter-spacing:0;font-size:16px;margin:0 0 6px}
+.feat .ic{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:rgba(229,9,20,.12);border:1px solid rgba(229,9,20,.35);margin-bottom:12px;font-size:18px}
+.feat p{color:var(--muted);margin:0;font-size:14px}
+.steps{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));counter-reset:s;padding:0;list-style:none}
+.steps li{position:relative;padding:20px 20px 20px 64px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);counter-increment:s}
+.steps li::before{content:counter(s);position:absolute;left:20px;top:18px;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);font-weight:700}
+.steps b{display:block;margin-bottom:2px}.steps span{color:var(--muted);font-size:14px}
+.faq details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-top:8px}
+.faq summary{cursor:pointer;font-weight:600}.faq p{color:var(--muted);margin:10px 0 0;font-size:14px}
 `;
 
 // Attribution required by TMDB, plus "unofficial" notice and optional legal links (IMPRINT_URL / PRIVACY_URL)
@@ -131,19 +161,56 @@ const page = (title: string, body: string, nonce = '', script = '') => `<!doctyp
 const support = (url?: string) => (url ? `<a class="btn ghost" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Support ♥</a>` : '');
 const brand = (extra = '') => `<div class="brand"><a href="/" class="home" aria-label="Couchpilot home"><img src="/logo.svg" alt="">Couchpilot</a><span class="sp"></span><div class="top">${extra}</div></div>`;
 
+// Decorative row preview: gradient tiles instead of real posters (no images to license or load)
+const previewRow = (name: string, hues: number[]) =>
+  `<div class="pr"><b>${name}</b><div class="tiles">${hues.map((h) => `<span class="t" style="--h:${h}"></span>`).join('')}</div></div>`;
+
 export const homePage = (publicUrl: string, supportUrl?: string, error?: string) =>
   page(
     'Home',
-    `${brand(`${support(supportUrl)}<a class="btn ghost" href="/login">Log in</a>`)}
+    `<div class="home">${brand(`${support(supportUrl)}<a class="btn ghost" href="/login">Log in</a>`)}
 ${error ? `<div class="note err">${esc(error)}</div>` : ''}
 <h1>Your couch,<br>on autopilot.</h1>
-<p class="lead">Personal rows for Nuvio: trending, new releases, anime and picks from your watch history, ranked by the AI of your choice. Replaces Cinemeta.</p>
-<form method="post" action="/start"><button>Configure now</button></form>
-<p class="small muted">No account needed. All you need is a free TMDB key. You can set a password at the end if you like.</p>
-<div class="hero-cards">
-<div class="sec" style="margin:0"><b>Already set up?</b><p class="small muted">Tap “Configure” on the addon in Nuvio, or log in with your account ID.</p><a class="btn ghost" href="/login">Log in</a></div>
+<p class="lead">Couchpilot turns Nuvio into a personal streaming home: rows built from what you actually watch, ranked by the AI of your choice, with better metadata than Cinemeta.</p>
+<div class="cta"><form method="post" action="/start"><button>Configure now</button></form><a class="btn ghost" href="#how">How it works</a></div>
+<ul class="trust"><li>Free and open source</li><li>No account needed</li><li>Your keys stay encrypted</li><li>Read-only access to your history</li></ul>
+
+<div class="preview" aria-hidden="true">
+${previewRow('Top Picks for You', [350, 210, 30, 280, 160, 5, 240, 120, 320])}
+${previewRow('Because You Watched Dune', [25, 40, 200, 15, 260, 35, 190, 50, 220])}
+${previewRow('Complete the Saga', [270, 300, 230, 330, 250, 290, 210, 310, 260])}
+</div>
+
+<h2>What you get</h2><p>Everything Netflix does with your taste, inside Nuvio.</p>
+<div class="feat">
+<div class="sec"><div class="ic">★</div><h3>Rows that know you</h3><p>Top Picks, Because You Watched, new episodes of your shows, Complete the Saga, More from your favorite director, Coming Soon and a row for the time of day.</p></div>
+<div class="sec"><div class="ic">✦</div><h3>Your AI, your key</h3><p>OpenAI, Claude, Gemini, OpenRouter or your own Ollama ranks the picks, names genre mixes and builds rows from a sentence like “cozy 90s sci-fi”. Works without AI too.</p></div>
+<div class="sec"><div class="ic">◎</div><h3>Made for Nuvio profiles</h3><p>Connect Nuvio Sync once and every Nuvio profile gets its own recommendations. Share settings across profiles or fine-tune each one.</p></div>
+<div class="sec"><div class="ic">▤</div><h3>Better metadata</h3><p>Replaces Cinemeta: localized titles and descriptions, HD backgrounds, title logos, cast, trailers and episode thumbnails, while keeping the IMDb IDs stream addons need.</p></div>
+<div class="sec"><div class="ic">✿</div><h3>Anime done right</h3><p>Separate anime rows from AniList and anime picks from your history, so anime never clutters your movie and series rows.</p></div>
+<div class="sec"><div class="ic">⛨</div><h3>Private by design</h3><p>API keys and logins are stored encrypted and never shown again. Rate limits protect your AI key. Couchpilot provides catalogs and metadata only, no streams.</p></div>
+</div>
+
+<h2 id="how">How it works</h2><p>Set up in about five minutes.</p>
+<ol class="steps">
+<li><b>Connect your history</b><span>Nuvio Sync, Trakt, Simkl or a public AniList profile. Couchpilot only reads it.</span></li>
+<li><b>Pick rows and AI</b><span>Choose and rename your rows, add a free TMDB key and, if you like, an AI key.</span></li>
+<li><b>Install in Nuvio</b><span>Copy your personal URL into Nuvio under Addons. Your rows refresh in the background.</span></li>
+</ol>
+
+<h2>Questions</h2>
+<div class="faq">
+<details><summary>Does it cost anything?</summary><p>No. You only need a free TMDB key. AI is optional and billed by your provider; the config page shows the expected cost, usually a few cents a month.</p></details>
+<details><summary>Do I need an account?</summary><p>No. You get a private install URL right away. Set a password if you want to log in from other devices, or export your settings as a file.</p></details>
+<details><summary>What is stored about me?</summary><p>Your settings, encrypted keys and login tokens, and the computed rows. Your Nuvio password is used once to sign in and never stored. Delete everything with one click.</p></details>
+<details><summary>Does Couchpilot play anything?</summary><p>No. It provides rows, search and metadata. Playback comes from the other addons you use in Nuvio.</p></details>
+</div>
+
+<h2>Already set up?</h2><p>Two more ways in.</p>
+<div class="hero-cards" style="margin-top:0">
+<div class="sec" style="margin:0"><b>Change your settings</b><p class="small muted">Tap “Configure” on the addon in Nuvio, or log in with your account ID.</p><a class="btn ghost" href="/login">Log in</a></div>
 <div class="sec" style="margin:0"><b>Anime rows only</b><p class="small muted">No setup and no TMDB key, plus search and metadata.</p><input type="text" readonly value="${esc(publicUrl)}/manifest.json"></div>
-</div>`,
+</div></div>`,
   );
 
 export const loginPage = (error?: string, supportUrl?: string) =>
@@ -189,8 +256,12 @@ window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.return
 list.addEventListener('click',e=>{const b=e.target.closest('[data-mv]');if(!b)return;const r=b.closest('.row');
 markDirty();if(b.dataset.mv==='up'&&r.previousElementSibling)list.insertBefore(r,r.previousElementSibling);
 if(b.dataset.mv==='down'&&r.nextElementSibling)list.insertBefore(r.nextElementSibling,r);});
-list.querySelectorAll('.handle').forEach(h=>{h.addEventListener('dragstart',e=>{drag=h.closest('.row');drag.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
-h.addEventListener('dragend',()=>{if(drag){drag.classList.remove('dragging');markDirty();}drag=null;});});
+list.addEventListener('dragstart',e=>{const h=e.target.closest('.handle');if(!h)return;drag=h.closest('.row');drag.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+list.addEventListener('dragend',()=>{if(drag){drag.classList.remove('dragging');markDirty();}drag=null;});
+// Switching a row on moves it into your rows, switching it off folds it away under "More rows"
+const more=document.getElementById('rowmore'),mc=document.getElementById('morecount');
+document.getElementById('rows').addEventListener('change',e=>{const sw=e.target;if(!sw.matches||!sw.matches('.sw[name=rows]'))return;const r=sw.closest('.row');
+if(sw.checked&&r.parentElement===more)list.appendChild(r);else if(!sw.checked&&r.parentElement===list)more.prepend(r);mc.textContent=more.children.length;});
 list.addEventListener('dragover',e=>{if(!drag)return;e.preventDefault();const r=e.target.closest('.row');if(!r||r===drag)return;
 const b=r.getBoundingClientRect();list.insertBefore(drag,e.clientY<b.top+b.height/2?r:r.nextSibling);});
 const jl=document.getElementById('jobs');
@@ -233,19 +304,21 @@ export function configPage(o: {
 }) {
   const s = o.settings;
   const isRoot = o.profileId === o.accountId;
-  const rows = orderedRowIds(s)
-    .map((id) => {
+  const rowHtml = (id: string) => {
       const r = ROWS[id];
       const type = r.type === 'mixed' ? 'Mix' : r.type === 'movie' ? 'Movie' : 'Series';
       const pill = r.type === 'mixed' ? 'Mix' : r.group === 'Anime' ? (r.type === 'movie' ? 'Anime movie' : 'Anime') : type;
       return `<div class="row"><span class="handle" draggable="true" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
-<input class="sw" type="checkbox" name="rows" value="${esc(id)}" aria-label="Show ${esc(r.name)}"${s.rows.includes(id) ? ' checked' : ''}>
-<input type="text" name="name_${esc(id)}" maxlength="60" placeholder="${esc(r.name)}" value="${esc(s.names[id] ?? r.name)}" aria-label="Name for ${esc(r.name)}" title="${esc(GROUP_PILL[r.group] ?? r.group)} · ${type}">
+<input class="sw" type="checkbox" name="rows" value="${esc(id)}" aria-label="Show ${esc(r.name)}"${isOn(id, s) ? ' checked' : ''}${id.startsWith('custom-') ? ' disabled title="On when the row has a prompt (below)"' : ''}>
+<input type="text" name="name_${esc(id)}" maxlength="60" placeholder="${esc(defaultName(id, s.language))}" value="${esc(s.names[id] ?? defaultName(id, s.language))}" aria-label="Name for ${esc(r.name)}" title="${esc(GROUP_PILL[r.group] ?? r.group)} · ${type}">
 <span class="pill g${r.personal ? ' fy' : ''}" title="${esc(r.group)}">${r.personal ? '★ ' : ''}${esc(pill)}</span>
 <span class="mv"><button type="button" data-mv="up" aria-label="Move up">▲</button><button type="button" data-mv="down" aria-label="Move down">▼</button></span>
 <input type="hidden" name="order" value="${esc(id)}"></div>`;
-    })
-    .join('');
+  };
+  // Active rows first (sortable), everything else folded away under "More rows"
+  const ids = orderedRowIds(s);
+  const activeRows = ids.filter((id) => isOn(id, s));
+  const moreRows = ids.filter((id) => !isOn(id, s) && !id.startsWith('custom-')); // AI rows switch on via their prompt below
 
   const conn = (name: string, on: boolean, detail: string, action: string) =>
     `<div class="conn"><div><b><span class="dot${on ? ' on' : ''}"></span>${name}</b><span class="small muted">${detail}</span></div>${action}</div>`;
@@ -300,9 +373,10 @@ export function configPage(o: {
   const price = ai.provider ? priceFor(ai) : null;
   const usd = (i: number, out: number) => (price ? (i * price[0] + out * price[1]) / 1e6 : null);
   const money = (v: number | null) => (v === null ? 'price unknown for this model' : v < 0.01 ? '< $0.01' : `≈ $${v.toFixed(2)}`);
-  const runsPerMonth = Math.min(24 / s.refreshHours, 40 / EST_CALLS_PER_RUN) * 30;
-  const estIn = runsPerMonth * EST_CALLS_PER_RUN * EST_CALL.in;
-  const estOut = runsPerMonth * EST_CALLS_PER_RUN * EST_CALL.out;
+  const callsPerRun = EST_CALLS_PER_RUN + s.customRows.filter((r) => r.prompt).length;
+  const runsPerMonth = Math.min(24 / s.refreshHours, 40 / callsPerRun) * 30;
+  const estIn = runsPerMonth * callsPerRun * EST_CALL.in;
+  const estOut = runsPerMonth * callsPerRun * EST_CALL.out;
   const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
   const usageBox = ai.provider
     ? `<div class="conn" style="display:block"><b>Cost</b>
@@ -351,8 +425,14 @@ ${scopeNote}
 <form method="post" action="/configure" id="cfg">
 <section class="sec step" id="rows" data-title="Rows"><h2><b>2</b>Rows</h2>
 <p class="sub">Toggle = show, ★ = from your watch history. Reorder with the arrows or drag the handle. Click a name to rename it, empty = default name. “Mix” shows movies and series in one row.</p>
-<div class="rows" id="rowlist">${rows}</div>
+<div class="rows" id="rowlist">${activeRows.map(rowHtml).join('')}</div>
+<details class="more"><summary><span>More rows</span> <span class="pill" id="morecount">${moreRows.length}</span><span class="small muted">Switch one on to add it to your rows</span></summary>
+<div class="rows" id="rowmore">${moreRows.map(rowHtml).join('')}</div></details>
 ${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for this profile’s “For You” rows<select name="nuvioProfile">${s.nuvioProfiles.map((p) => `<option value="${p.index}"${p.index === s.nuvioProfile ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
+<label class="check"><input class="sw" type="checkbox" name="hideWatched" value="1"${s.hideWatched ? ' checked' : ''}>Hide titles this profile has already watched in Trending, Popular, New and the other standard rows</label>
+<h3>Your own AI rows</h3>
+<p class="small muted" style="margin:0">Describe a row and the AI fills it with movies and shows that fit, e.g. “cozy 90s sci-fi” or “like Interstellar but shorter”. Needs an AI provider (step 3). Empty = row off.</p>
+${[1, 2, 3].map((n) => `<label>AI row ${n}<input type="text" name="custom${n}" maxlength="150" value="${esc(s.customRows[n - 1]?.prompt ?? '')}" placeholder="${['e.g. cozy 90s sci-fi', 'e.g. mind-bending thrillers like Inception', 'e.g. short comedies under 100 minutes'][n - 1]}"></label>`).join('')}
 <label>AniList username<span>Optional, for anime recommendations. Your list must be public.</span><input type="text" name="anilistUser" maxlength="20" value="${esc(s.anilistUser)}" placeholder="e.g. timon"></label>
 </section>
 

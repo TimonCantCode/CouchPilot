@@ -1,6 +1,6 @@
-import { ensureFresh, MOOD_NAMES, moodSlot, personalRow } from './personal.ts';
-import { anilistList, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbList, type Meta, type Type } from './sources.ts';
-import { cached, touchSeen, type Settings } from './store.ts';
+import { ensureFresh, moodName, moodSlot, personalRow, watchedIds } from './personal.ts';
+import { anilistList, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
+import { cached, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
 export type Ctx = { settings: Settings; tmdbKey?: string; userId?: string };
 // "mixed" = movies and series in one row. Nuvio opens every item with its own type.
@@ -46,6 +46,23 @@ const mixRow = (name: string, movie: string, series: string, group = 'Mixed (mov
   personal: movie.startsWith('foryou-'),
 });
 
+// Seasonal row: Halloween horror in October, Christmas movies in December, hidden the rest of the year
+export const season = (now = new Date()) => (now.getMonth() === 9 ? 'halloween' : now.getMonth() === 11 ? 'christmas' : null);
+const SEASON_NAMES = { halloween: ['Halloween Horror', 'Halloween-Horror'], christmas: ['Christmas Movies', 'Weihnachtsfilme'] } as const;
+const seasonalRow: Row = {
+  type: 'movie',
+  name: 'Seasonal Picks',
+  group: 'Movies',
+  needsTmdb: true,
+  fetch: async (ctx, page) => {
+    const s = season();
+    if (!s || !ctx.tmdbKey) return [];
+    const kw = s === 'christmas' ? await tmdbKeyword('christmas', ctx.tmdbKey) : null;
+    const path = s === 'halloween' ? '/discover/movie?with_genres=27&sort_by=popularity.desc&vote_count.gte=300' : kw ? `/discover/movie?with_keywords=${kw}&sort_by=popularity.desc&vote_count.gte=100` : '';
+    return path ? tmdbList(path, 'movie', ctx.tmdbKey, page, ctx.settings.language) : [];
+  },
+};
+
 // Default order = order here; users can change it on the config page
 export const ROWS: Record<string, Row> = {
   'foryou-movie': personal('movie', 'Top Picks for You'),
@@ -58,10 +75,17 @@ export const ROWS: Record<string, Row> = {
   'mix-movie-2': personal('movie', 'Your Genre Mix 2', { dynamicTitle: true }),
   'mix-series-1': personal('series', 'Your Genre Mix 1', { dynamicTitle: true }),
   'mix-series-2': personal('series', 'Your Genre Mix 2', { dynamicTitle: true }),
+  'saga-movie': personal('movie', 'Complete the Saga'),
+  'person-movie': personal('movie', 'More from Your Favorites', { dynamicTitle: true }),
+  'upcoming': personal('mixed', 'Coming Soon for You'),
+  'custom-1': personal('mixed', 'Your AI Row 1', { dynamicTitle: true }),
+  'custom-2': personal('mixed', 'Your AI Row 2', { dynamicTitle: true }),
+  'custom-3': personal('mixed', 'Your AI Row 3', { dynamicTitle: true }),
   'foryou-mix': mixRow('Top Picks for You', 'foryou-movie', 'foryou-series', FORYOU),
   'trending-mix': mixRow('Trending Now', 'trending-movie', 'trending-series'),
   'popular-mix': mixRow('Popular on Nuvio', 'popular-movie', 'popular-series'),
   'toprated-mix': mixRow('Top Rated', 'toprated-movie', 'toprated-series'),
+  'seasonal-movie': seasonalRow,
   'trending-movie': tmdbRow('movie', 'Trending Movies', '/trending/movie/week'),
   'trending-series': tmdbRow('series', 'Trending Shows', '/trending/tv/week'),
   'popular-movie': tmdbRow('movie', 'Popular Movies', '/movie/popular'),
@@ -79,6 +103,53 @@ export const ROWS: Record<string, Row> = {
   'anime-movies-new': animeRow('movie', 'New Anime Movies', () => ({ sort: ['START_DATE_DESC'], format: 'MOVIE', status_in: ['FINISHED'], popularity_greater: 2000 })),
 };
 
+// German default names (metadata language de-*); other languages fall back to English
+const DE: Record<string, string> = {
+  'foryou-movie': 'Top-Empfehlungen für dich',
+  'foryou-series': 'Top-Empfehlungen für dich',
+  'because-movie': 'Weil du geschaut hast',
+  'because-series': 'Weil du geschaut hast',
+  'new-episodes': 'Neue Folgen deiner Serien',
+  'mood-movie': 'Heute Abend für dich',
+  'mix-movie-1': 'Dein Genre-Mix 1',
+  'mix-movie-2': 'Dein Genre-Mix 2',
+  'mix-series-1': 'Dein Genre-Mix 1',
+  'mix-series-2': 'Dein Genre-Mix 2',
+  'saga-movie': 'Vervollständige die Reihe',
+  'person-movie': 'Mehr von deinen Favoriten',
+  upcoming: 'Demnächst für dich',
+  'custom-1': 'Deine KI-Reihe 1',
+  'custom-2': 'Deine KI-Reihe 2',
+  'custom-3': 'Deine KI-Reihe 3',
+  'seasonal-movie': 'Saisonale Filme',
+  'foryou-mix': 'Top-Empfehlungen für dich',
+  'trending-mix': 'Gerade angesagt',
+  'popular-mix': 'Beliebt auf Nuvio',
+  'toprated-mix': 'Am besten bewertet',
+  'trending-movie': 'Angesagte Filme',
+  'trending-series': 'Angesagte Serien',
+  'popular-movie': 'Beliebte Filme',
+  'popular-series': 'Beliebte Serien',
+  'new-movie': 'Neu im Kino',
+  'new-series': 'Diese Woche neu',
+  'toprated-movie': 'Am besten bewertete Filme',
+  'toprated-series': 'Am besten bewertete Serien',
+  'foryou-anime': 'Anime-Empfehlungen für dich',
+  'anime-trending': 'Angesagte Anime',
+  'anime-season': 'Anime dieser Season',
+  'anime-popular': 'Beliebteste Anime',
+  'anime-new': 'Neue Anime',
+  'anime-movies': 'Anime-Filme',
+  'anime-movies-new': 'Neue Anime-Filme',
+};
+export const defaultName = (id: string, lang: string) => (lang.startsWith('de') && DE[id]) || ROWS[id].name;
+
+// Shown? Rows added in an update are on by default for people who saved their rows before the update
+export const isOn = (id: string, s: Settings) => {
+  if (id.startsWith('custom-')) return !!s.customRows[Number(id.slice(7)) - 1]?.prompt;
+  return s.rows.includes(id) || (!s.order.includes(id) && DEFAULT_SETTINGS.rows.includes(id));
+};
+
 // Order: the user's saved order, new rows appended in default order
 export function orderedRowIds(settings: Settings): string[] {
   const known = settings.order.filter((id) => id in ROWS);
@@ -93,20 +164,25 @@ async function rowName(id: string, ctx: Ctx): Promise<string> {
   const row = ROWS[id];
   if (row.dynamicTitle && ctx.userId) {
     const title = (await personalRow(ctx.userId, storedKey(id, ctx.settings)))?.title;
-    if (id.startsWith('because-')) return title ? `Because You Watched ${title}` : row.name;
+    const de = ctx.settings.language.startsWith('de');
+    if (id.startsWith('because-')) return title ? (de ? `Weil du ${title} geschaut hast` : `Because You Watched ${title}`) : defaultName(id, ctx.settings.language);
     if (title) return title;
   }
-  if (id === 'mood-movie') return MOOD_NAMES[moodSlot(ctx.settings.timezone)];
-  return row.name;
+  if (id === 'mood-movie') return moodName(moodSlot(ctx.settings.timezone), ctx.settings.language);
+  const s = id === 'seasonal-movie' ? season() : null;
+  if (s) return SEASON_NAMES[s][ctx.settings.language.startsWith('de') ? 1 : 0];
+  return defaultName(id, ctx.settings.language);
 }
 
 const usable = (id: string, ctx: Ctx) => {
   const row = ROWS[id];
-  return ctx.settings.rows.includes(id) && (!row.personal || !!ctx.userId) && (!row.needsTmdb || !!ctx.tmdbKey);
+  if (id === 'seasonal-movie' && !season()) return false;
+  return isOn(id, ctx.settings) && (!row.personal || !!ctx.userId) && (!row.needsTmdb || !!ctx.tmdbKey);
 };
 
 export async function manifest(ctx: Ctx) {
   const ids = orderedRowIds(ctx.settings).filter((id) => usable(id, ctx));
+  const search = ctx.settings.language.startsWith('de') ? 'Suche' : 'Search';
   const catalogs = await Promise.all(ids.map(async (id) => ({ type: ROWS[id].type, id, name: await rowName(id, ctx), extra: [{ name: 'skip' }] })));
   return {
     id: 'community.couchpilot',
@@ -118,8 +194,8 @@ export async function manifest(ctx: Ctx) {
     idPrefixes: ['tt', 'kitsu:'],
     catalogs: [
       ...catalogs,
-      { type: 'movie', id: 'search', name: 'Search', extra: [{ name: 'search', isRequired: true }] },
-      { type: 'series', id: 'search', name: 'Search', extra: [{ name: 'search', isRequired: true }] },
+      { type: 'movie', id: 'search', name: search, extra: [{ name: 'search', isRequired: true }] },
+      { type: 'series', id: 'search', name: search, extra: [{ name: 'search', isRequired: true }] },
     ],
     behaviorHints: { configurable: true },
   };
@@ -140,11 +216,14 @@ async function rowMetas(id: string, ctx: Ctx, page: number): Promise<Meta[]> {
   }
   if (row.personal) {
     if (!ctx.userId || page > 1) return []; // single page only
-    void ensureFresh(ctx.userId, ctx.settings.refreshHours);
+    void ensureFresh(ctx.userId, ctx.settings.refreshHours, ctx.settings.language);
     return (await personalRow(ctx.userId, storedKey(id, ctx.settings)))?.metas ?? [];
   }
   const { language, refreshHours } = ctx.settings;
-  return cached(`cat2:${id}:${page}:${language}:${refreshHours}`, refreshHours * 3600, () => row.fetch!(ctx, page));
+  const metas = await cached(`cat2:${id}:${page}:${language}:${refreshHours}:${season() ?? ''}`, refreshHours * 3600, () => row.fetch!(ctx, page));
+  if (!ctx.settings.hideWatched || !ctx.userId) return metas;
+  const seen = new Set(await watchedIds(ctx.userId));
+  return metas.filter((m) => !seen.has(m.id));
 }
 
 export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSearchParams) {

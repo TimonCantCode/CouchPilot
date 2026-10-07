@@ -1,3 +1,8 @@
+# Logs are capped (3 × 10 MB per container) so they can't fill the disk
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
 services:
   addon:
     build: .
@@ -15,7 +20,16 @@ services:
       IMPRINT_URL: ${IMPRINT_URL:-}
       PRIVACY_URL: ${PRIVACY_URL:-}
     secrets: [master_key]
-    depends_on: [postgres, redis]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *logging
     # Hardening: read-only filesystem, no Linux capabilities, no privilege escalation
     read_only: true
     tmpfs: [/tmp]
@@ -32,6 +46,12 @@ services:
       POSTGRES_DB: nuvio
     volumes: [pgdata:/var/lib/postgresql/data]
     security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nuvio -d nuvio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
     # no public ports: only reachable inside the Docker network
 
   redis:
@@ -42,6 +62,37 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes: [redisdata:/data]
     security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  # Daily database backup to ./backups, the last 7 days are kept
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: nuvio
+      PGDATABASE: nuvio
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes: [./backups:/backups]
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        while true; do
+        f=/backups/couchpilot-$$(date +%F).sql.gz;
+        pg_dump -f /tmp/dump.sql && gzip -c /tmp/dump.sql > $$f.tmp && mv $$f.tmp $$f && echo "backup ok: $$f" || { echo "backup failed"; rm -f $$f.tmp; }; rm -f /tmp/dump.sql;
+        find /backups -name 'couchpilot-*.sql.gz' -mtime +7 -delete;
+        sleep 86400;
+        done
+    depends_on:
+      postgres: { condition: service_healthy }
+    security_opt: [no-new-privileges:true]
+    logging: *logging
 
   caddy:
     image: caddy:2-alpine
@@ -52,6 +103,9 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data
+    depends_on:
+      addon: { condition: service_healthy }
+    logging: *logging
 
 secrets:
   master_key:

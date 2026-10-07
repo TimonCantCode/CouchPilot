@@ -1,5 +1,4 @@
 node_modules
 .env
 secrets/
-dump.rdb
-.impeccable/
+backups/

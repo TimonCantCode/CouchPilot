@@ -67,6 +67,8 @@ export type Settings = {
   nuvioProfiles: { index: number; name: string }[];
   anilistUser: string;
   meta: { source: 'cinemeta' | 'enhanced'; localize: boolean; cast: boolean; trailers: boolean; episodes: boolean };
+  hideWatched: boolean; // hide already watched titles in Trending, Popular, New … rows
+  customRows: { prompt: string }[]; // own AI rows ("cozy 90s sci-fi"), up to 3
   inherit: boolean; // profile follows the default profile's settings (history stays its own)
   defaultProfile: string; // only on the main profile: which profile is the default ('' = main profile)
 };
@@ -79,7 +81,7 @@ export type Secrets = {
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  rows: ['foryou-movie', 'foryou-series', 'because-movie', 'because-series', 'new-episodes', 'mood-movie', 'trending-movie', 'trending-series', 'popular-movie', 'popular-series', 'new-movie', 'anime-trending'],
+  rows: ['foryou-movie', 'foryou-series', 'because-movie', 'because-series', 'new-episodes', 'mood-movie', 'trending-movie', 'trending-series', 'popular-movie', 'popular-series', 'new-movie', 'anime-trending', 'saga-movie', 'person-movie', 'upcoming', 'seasonal-movie'],
   order: [],
   names: {},
   refreshHours: 6,
@@ -92,6 +94,8 @@ export const DEFAULT_SETTINGS: Settings = {
   nuvioProfiles: [],
   anilistUser: '',
   meta: { source: 'enhanced', localize: true, cast: true, trailers: true, episodes: true },
+  hideWatched: true,
+  customRows: [],
   inherit: true,
   defaultProfile: '',
 };

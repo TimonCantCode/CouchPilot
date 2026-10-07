@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import { catalog, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
+import { catalog, defaultName, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
 import { assertPublicUrl, PROVIDERS } from './ai.ts';
 import { hashPassword, verifyPassword } from './crypto.ts';
 import { nuvioProfileList, nuvioSignIn, SIMKL_ID, simklPin, simklPoll, TRAKT_ID, traktDeviceCode, traktPoll } from './history.ts';
@@ -122,7 +122,15 @@ async function login(res: Response, userId: string, to = '/configure') {
 const page = (res: Response, html: (nonce: string) => string, status = 200) => void res.status(status).send(html(res.locals.nonce));
 
 app.get('/', (_req, res) => page(res, () => homePage(PUBLIC_URL, SUPPORT_URL)));
-app.get('/health', (_req, res) => void res.send('ok'));
+// Health check for Docker: also checks the database and Redis
+app.get('/health', async (_req, res) => {
+  try {
+    await Promise.all([db.query('select 1'), redis.ping()]);
+    res.send('ok');
+  } catch {
+    res.status(503).send('unhealthy');
+  }
+});
 app.get('/login', (_req, res) => page(res, () => loginPage(undefined, SUPPORT_URL)));
 app.get('/register', (_req, res) => res.redirect('/'));
 
@@ -304,12 +312,13 @@ app.post('/configure', auth, async (req, res) => {
   const cfg = await configByUser(userId);
   const b = req.body;
   const picked = list(b.rows);
+  const customRows = [1, 2, 3].map((n) => ({ prompt: field(b[`custom${n}`]).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 150) }));
   const hours = Number(b.refreshHours);
   const language = field(b.language);
   const names: Record<string, string> = {};
   for (const id of Object.keys(ROWS)) {
     const n = field(b[`name_${id}`]).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 60);
-    if (n && n !== ROWS[id].name) names[id] = n;
+    if (n && n !== ROWS[id].name && n !== defaultName(id, 'de')) names[id] = n; // default names (any language) stay unset
   }
   const provider = field(b.aiProvider);
   let baseUrl = field(b.aiBaseUrl).slice(0, 300);
@@ -326,7 +335,8 @@ app.post('/configure', auth, async (req, res) => {
   const tz = field(b.timezone);
   const settings: Settings = {
     ...cfg.settings,
-    rows: Object.keys(ROWS).filter((id) => picked.includes(id)),
+    // own AI rows are shown exactly when they have a prompt
+    rows: Object.keys(ROWS).filter((id) => (id.startsWith('custom-') ? !!customRows[Number(id.slice(7)) - 1]?.prompt : picked.includes(id))),
     order: [...new Set(list(b.order).filter((id) => id in ROWS))],
     names,
     refreshHours: REFRESH_HOURS.includes(hours) ? hours : DEFAULT_SETTINGS.refreshHours,
@@ -335,6 +345,8 @@ app.post('/configure', auth, async (req, res) => {
     ai: { provider: (provider in PROVIDERS ? provider : '') as AiProvider, model: field(b.aiModel).replace(/[^\w.:/@-]/g, '').slice(0, 100), baseUrl },
     aiPrompt: field(b.aiPrompt).slice(0, 500),
     aiReasons: b.aiReasons === '1',
+    hideWatched: b.hideWatched === '1',
+    customRows,
     meta: {
       source: b.metaSource === 'cinemeta' ? 'cinemeta' : 'enhanced',
       localize: b.metaLocalize === '1',
@@ -402,7 +414,7 @@ app.post('/export', auth, async (req, res) => {
     exportedAt: new Date().toISOString(),
     settings: {
       rows: s.rows, order: s.order, names: s.names, refreshHours: s.refreshHours, language: s.language, timezone: s.timezone,
-      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser,
+      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, customRows: s.customRows,
     },
   };
   // Keys only on request; Nuvio/Trakt/Simkl logins are never exported (rotating tokens must exist only once)
@@ -449,6 +461,8 @@ app.post('/import', auth, async (req, res) => {
       episodes: i.meta?.episodes !== false,
     },
     anilistUser: /^[A-Za-z0-9_-]{2,20}$/.test(anilist) ? anilist : '',
+    hideWatched: i.hideWatched !== false,
+    customRows: (Array.isArray(i.customRows) ? i.customRows : []).slice(0, 3).map((r: any) => ({ prompt: clean(r?.prompt, 150) })),
   };
   const tmdbKey = clean(x.keys?.tmdbKey, 400);
   const aiKey = clean(x.keys?.aiKey, 400);
