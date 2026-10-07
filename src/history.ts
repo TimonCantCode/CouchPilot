@@ -35,12 +35,16 @@ export async function nuvioSignIn(email: string, password: string) {
     headers: nuvioHeaders(),
     body: JSON.stringify({ email, password }),
   });
-  const profiles: any[] = (await nuvioRpc(s.access_token, 'sync_pull_profiles', {})) ?? [];
-  return {
-    refreshToken: s.refresh_token as string,
-    profiles: profiles.map((p) => ({ index: Number(p.profile_index), name: String(p.name ?? `Profile ${p.profile_index}`) })),
-  };
+  return { refreshToken: s.refresh_token as string, profiles: await pullProfiles(s.access_token) };
 }
+
+const pullProfiles = async (token: string) =>
+  (((await nuvioRpc(token, 'sync_pull_profiles', {})) ?? []) as any[])
+    .map((p) => ({ index: Number(p.profile_index), name: String(p.name ?? `Profile ${p.profile_index}`).slice(0, 30) }))
+    .slice(0, 20);
+
+// Current profile list of a connected Nuvio account (userId = profile that holds the login)
+export const nuvioProfileList = async (userId: string) => pullProfiles(await nuvioAccessToken(userId));
 
 // Supabase rotates refresh tokens: one refresh at a time, store the new token immediately
 async function nuvioAccessToken(userId: string): Promise<string> {

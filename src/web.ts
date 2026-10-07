@@ -83,8 +83,6 @@ details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}de
 .bar>div{max-width:680px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .install input{font:13px ui-monospace,monospace}
 .top{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.top .btn,.top button{padding:7px 12px;font-size:13px}
-.profiles{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 6px}.profiles button{padding:7px 12px;font-size:13px}.profiles .cur{background:var(--text);color:var(--bg)}
-fieldset.fs{border:0;margin:0;padding:0;min-width:0}fieldset.fs:disabled{opacity:.45}
 .row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.danger{color:#ff8a8f;border-color:rgba(229,9,20,.45)}
 .foot{margin:40px 0 0;font-size:12px;color:var(--muted)}.foot p{margin:8px 0}.foot img{opacity:.8}
 /* Step layout: sidebar on desktop, drawer on phones, one step at a time when JS runs */
@@ -98,15 +96,15 @@ main:has(.shell){max-width:1100px}
 .side a:hover{background:var(--panel);color:var(--text)}
 .side a[aria-current]{background:var(--panel);color:var(--text);box-shadow:inset 3px 0 0 var(--accent)}
 .side a.done b{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.5)}
-.side .profiles{padding:0 4px;margin:0}
 .burger{display:none}.scrim{display:none}
+.psw select{margin:0;padding:7px 30px 7px 12px;font-size:13px;font-weight:600;max-width:180px}.savebtns{display:inline-flex;gap:8px}
 .js .step:not(.on),.js [data-steps]:not(.on){display:none}
 .bar>div.wide{max-width:1100px;padding:0 16px 0 278px}.bar .sp{flex:1}
 .pager{max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block}
-.bar:has(#savebtn[hidden]) #next{background:var(--accent);border-color:transparent}
+#dirty{color:#ffb4b8}
 .shell~.foot{margin-left:262px}
 @media (max-width:860px){
-  .shell{display:block}.burger{display:inline-flex}.bar>div.wide{padding:0}.shell~.foot{margin-left:0}
+  .shell{display:block}.burger{display:inline-flex}.pl,#dirty{display:none!important}.pager{max-width:none}.bar button{padding:10px 11px;font-size:14px;white-space:nowrap}.bar .actions{gap:6px}.bar>div.wide{padding:0}.shell~.foot{margin-left:0}
   .side{position:fixed;z-index:30;top:0;left:0;bottom:0;width:min(300px,84vw);overflow-y:auto;background:var(--bg);border-right:1px solid var(--line);padding:20px 12px;transform:translateX(-102%);transition:transform .2s}
   .nav-open .side{transform:none}.nav-open .scrim{display:block;position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.55)}
 }
@@ -117,7 +115,7 @@ main:has(.shell){max-width:1100px}
 const legal = { imprint: process.env.IMPRINT_URL, privacy: process.env.PRIVACY_URL };
 const safeUrl = (u?: string) => (u && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : '');
 const FOOTER = `<footer class="foot"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB" width="90" height="12"></a>
-<p>This product uses the TMDB API but is not endorsed or certified by TMDB. Couchpilot is an unofficial community project and not affiliated with Nuvio, Stremio, TMDB, AniList, Trakt or Simkl.</p>
+<p>This product uses the TMDB API but is not endorsed or certified by TMDB. Couchpilot is an unofficial community project and not affiliated with Nuvio, TMDB, AniList, Trakt or Simkl.</p>
 ${[safeUrl(legal.imprint) && `<a href="${esc(safeUrl(legal.imprint))}" target="_blank" rel="noopener noreferrer">Imprint</a>`, safeUrl(legal.privacy) && `<a href="${esc(safeUrl(legal.privacy))}" target="_blank" rel="noopener noreferrer">Privacy</a>`].filter(Boolean).join(' · ')}</footer>`;
 
 const page = (title: string, body: string, nonce = '', script = '') => `<!doctype html>
@@ -134,7 +132,7 @@ export const homePage = (publicUrl: string, supportUrl?: string, error?: string)
     `${brand(`${support(supportUrl)}<a class="btn ghost" href="/login">Log in</a>`)}
 ${error ? `<div class="note err">${esc(error)}</div>` : ''}
 <h1>Your couch,<br>on autopilot.</h1>
-<p class="lead">Personal rows for Nuvio and Stremio: trending, new releases, anime and picks from your watch history, ranked by the AI of your choice. Replaces Cinemeta.</p>
+<p class="lead">Personal rows for Nuvio: trending, new releases, anime and picks from your watch history, ranked by the AI of your choice. Replaces Cinemeta.</p>
 <form method="post" action="/start"><button>Configure now</button></form>
 <p class="small muted">No account needed. All you need is a free TMDB key. You can set a password at the end if you like.</p>
 <div class="hero-cards">
@@ -161,28 +159,33 @@ ${error ? `<div class="note err">${esc(error)}</div>` : ''}
 const PAGE_JS = `
 document.documentElement.classList.add('js');
 const steps=[...document.querySelectorAll('.step')],links=[...document.querySelectorAll('.side a[href^="#"]')];
-const prevB=document.getElementById('prev'),nextB=document.getElementById('next'),saveB=document.getElementById('savebtn');
+const prevB=document.getElementById('prev'),nextB=document.getElementById('next');
 const idx=()=>steps.findIndex(x=>x.classList.contains('on'));
 function show(id,scroll){let i=steps.findIndex(x=>x.id===id);if(i<0)i=0;const cur=steps[i],p=steps[i-1],n=steps[i+1];
 steps.forEach(x=>x.classList.toggle('on',x===cur));
 document.querySelectorAll('[data-steps]').forEach(e=>e.classList.toggle('on',e.dataset.steps.split(',').includes(cur.id)));
 links.forEach(a=>a.getAttribute('href')==='#'+cur.id?a.setAttribute('aria-current','step'):a.removeAttribute('aria-current'));
-prevB.hidden=!p;nextB.hidden=!n;if(p)prevB.textContent='← '+p.dataset.title;if(n)nextB.textContent=n.dataset.title+' →';
-saveB.hidden=!cur.closest('#cfg');
+prevB.hidden=!p;nextB.hidden=!n;if(p)prevB.querySelector('.pl').textContent=p.dataset.title;if(n)nextB.querySelector('.pl').textContent=n.dataset.title;
 try{sessionStorage.setItem('cp-step',cur.id);}catch(e){}
 history.replaceState(null,'','#'+cur.id);document.body.classList.remove('nav-open');if(scroll)window.scrollTo(0,0);}
 links.forEach(a=>a.addEventListener('click',e=>{e.preventDefault();show(a.getAttribute('href').slice(1),true);}));
 prevB.addEventListener('click',()=>show(steps[idx()-1].id,true));nextB.addEventListener('click',()=>show(steps[idx()+1].id,true));
 let first=location.hash.slice(1);if(!first){try{first=sessionStorage.getItem('cp-step')||'';}catch(e){}}show(first,false);
+const ps=document.getElementById('psel');ps&&ps.addEventListener('change',()=>ps.form.submit());
 const bg=document.getElementById('burger');
 bg.addEventListener('click',()=>{const o=document.body.classList.toggle('nav-open');bg.setAttribute('aria-expanded',String(o));});
 document.getElementById('scrim').addEventListener('click',()=>{document.body.classList.remove('nav-open');bg.setAttribute('aria-expanded','false');});
 const list=document.getElementById('rowlist');let drag=null;
+// Unsaved changes: shown in the bar, and the browser asks before leaving the page
+const cfg=document.getElementById('cfg'),dirtyEl=document.getElementById('dirty');let dirty=false;
+const markDirty=()=>{dirty=true;dirtyEl.hidden=false;};
+cfg.addEventListener('input',markDirty);cfg.addEventListener('change',markDirty);cfg.addEventListener('submit',()=>{dirty=false;});
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 list.addEventListener('click',e=>{const b=e.target.closest('[data-mv]');if(!b)return;const r=b.closest('.row');
-if(b.dataset.mv==='up'&&r.previousElementSibling)list.insertBefore(r,r.previousElementSibling);
+markDirty();if(b.dataset.mv==='up'&&r.previousElementSibling)list.insertBefore(r,r.previousElementSibling);
 if(b.dataset.mv==='down'&&r.nextElementSibling)list.insertBefore(r.nextElementSibling,r);});
 list.querySelectorAll('.handle').forEach(h=>{h.addEventListener('dragstart',e=>{drag=h.closest('.row');drag.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
-h.addEventListener('dragend',()=>{drag&&drag.classList.remove('dragging');drag=null;});});
+h.addEventListener('dragend',()=>{if(drag){drag.classList.remove('dragging');markDirty();}drag=null;});});
 list.addEventListener('dragover',e=>{if(!drag)return;e.preventDefault();const r=e.target.closest('.row');if(!r||r===drag)return;
 const b=r.getBoundingClientRect();list.insertBefore(drag,e.clientY<b.top+b.height/2?r:r.nextSibling);});
 const st=document.getElementById('jobstatus');
@@ -204,7 +207,7 @@ export function configPage(o: {
   nonce: string;
   accountId: string;
   profileId: string;
-  profiles: { id: string; label: string }[];
+  profiles: { id: string; label: string; custom: boolean; nuvio?: string }[];
   defaultId: string;
   inheritedFrom?: string;
   nuvioShared?: boolean;
@@ -280,9 +283,12 @@ export function configPage(o: {
         `<span class="small muted p-${k}">${k === 'ollama' ? 'Key only needed if your Ollama requires one. ' : ''}Default model: <code>${esc(p.model)}</code> · <a href="${esc(p.keyUrl)}" target="_blank" rel="noopener noreferrer">${k === 'ollama' ? 'Set up Ollama' : `Get a ${esc(p.label)} API key`} ↗</a></span>`,
     )
     .join('');
-  const profileBar = `<div class="profiles">${o.profiles
-    .map((p) => `<form method="post" action="/profile/switch"><input type="hidden" name="id" value="${esc(p.id)}"><button class="ghost${p.id === o.profileId ? ' cur' : ''}"${p.id === o.profileId ? ' disabled' : ''}>${p.id === o.defaultId ? '★ ' : ''}${esc(p.label)}</button></form>`)
-    .join('')}</div>`;
+  const multi = o.profiles.length > 1;
+  const profileSelect = multi
+    ? `<form method="post" action="/profile/switch" class="psw"><select name="id" id="psel" aria-label="Profile">${o.profiles
+        .map((p) => `<option value="${esc(p.id)}"${p.id === o.profileId ? ' selected' : ''}>${esc(p.label)}</option>`)
+        .join('')}</select><noscript><button class="ghost">Switch</button></noscript></form>`
+    : '';
   const job = o.jobStatus;
   // AI cost: real usage of the last 30 days plus an estimate for the chosen refresh interval
   const price = ai.provider ? priceFor(ai) : null;
@@ -299,27 +305,24 @@ export function configPage(o: {
     : '';
   const label = (id: string) => o.profiles.find((p) => p.id === id)?.label ?? 'default profile';
   const inherit = !!o.inheritedFrom;
-  const lock = inherit ? ' disabled' : '';
-  const inheritNote = inherit
-    ? `<div class="note" data-steps="rows,ai,settings"><b>This profile follows “${esc(label(o.inheritedFrom!))}”.</b> Rows, AI and settings come from there, your watch history stays your own.
-<form method="post" action="/profile/inherit" style="display:block;margin-top:10px"><input type="hidden" name="on" value="0"><button class="ghost">Customize for this profile</button></form></div>`
+  const scopeNote = multi
+    ? `<div class="note" data-steps="rows,ai,settings">${inherit
+        ? `<b>${esc(label(o.profileId))} uses the shared settings.</b> “Save for all” keeps every profile in sync, “Only this profile” fine-tunes just this one.`
+        : `<b>${esc(label(o.profileId))} has its own settings.</b> “Save for all” applies them to every profile, “Only this profile” keeps them here.`}</div>`
     : '';
-
   const steps: [string, string, boolean][] = [
     ['history', 'Watch history', hasHistory],
     ['rows', 'Rows', false],
     ['ai', 'AI', !!ai.provider],
     ['settings', 'Settings', !!tmdb],
-    ['install', 'Install', false],
-    ['profiles', 'Profiles', false],
-    ['account', 'Account', o.hasPassword],
+    ['profiles', 'Profiles', multi],
+    ['finish', 'Install & account', false],
   ];
   return page(
     'Configure',
-    `${brand(`${support(o.supportUrl)}${o.hasPassword ? '<form method="post" action="/logout"><button class="ghost">Log out</button></form>' : ''}<button type="button" class="ghost burger" id="burger" aria-label="Menu" aria-expanded="false" aria-controls="side">☰</button>`)}
+    `${brand(`${support(o.supportUrl)}${o.hasPassword ? '<form method="post" action="/logout"><button class="ghost">Log out</button></form>' : ''}${profileSelect}<button type="button" class="ghost burger" id="burger" aria-label="Menu" aria-expanded="false" aria-controls="side">☰</button>`)}
 <div class="shell">
 <nav class="side" id="side" aria-label="Setup steps">
-${o.profiles.length > 1 ? `<p class="side-h">Profile</p>${profileBar}` : ''}
 <p class="side-h">Setup</p>
 ${steps.map(([id, title, done], i) => `<a href="#${id}"${done ? ' class="done"' : ''}><b>${done ? '✓' : i + 1}</b>${title}</a>`).join('')}
 </nav>
@@ -331,20 +334,19 @@ ${tmdb ? '' : '<div class="note err"><b>TMDB key missing.</b> Without it, movie,
 <section class="sec step" id="history" data-title="Watch history"><h2><b>1</b>Watch history</h2>
 <p class="sub">Your “For You” rows are built from this. Read-only, nothing is ever changed.</p>
 ${nuvio}${trakt}${simkl}${anilist}
-${hasHistory ? `<div class="actions"><form method="post" action="/refresh"><button class="ghost">Recompute For You rows</button></form></div>` : ''}
+${hasHistory || multi ? `<div class="actions">${hasHistory ? `<form method="post" action="/refresh"><button class="ghost">Recompute${multi ? ' this profile' : ' For You rows'}</button></form>` : ''}${multi ? `<form method="post" action="/refresh"><input type="hidden" name="all" value="1"><button class="ghost">Recompute all profiles</button></form>` : ''}</div>` : ''}
 <p class="small muted" id="jobstatus" style="margin:12px 0 0" data-running="${job?.running ? '1' : '0'}"${job ? '' : ' hidden'}>Last run: ${esc(job?.text ?? '')}</p>
 </section>
 
-${inheritNote}
+${scopeNote}
 <form method="post" action="/configure" id="cfg">
 <section class="sec step" id="rows" data-title="Rows"><h2><b>2</b>Rows</h2>
 <p class="sub">Toggle = show, ★ = from your watch history. Reorder with the arrows or drag the handle. Click a name to rename it, empty = default name. “Mix” shows movies and series in one row.</p>
-<fieldset class="fs"${lock}><div class="rows" id="rowlist">${rows}</div></fieldset>
-${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for “For You”<select name="nuvioProfile">${s.nuvioProfiles.map((p) => `<option value="${p.index}"${p.index === s.nuvioProfile ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
+<div class="rows" id="rowlist">${rows}</div>
+${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for this profile’s “For You” rows<select name="nuvioProfile">${s.nuvioProfiles.map((p) => `<option value="${p.index}"${p.index === s.nuvioProfile ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
 <label>AniList username<span>Optional, for anime recommendations. Your list must be public.</span><input type="text" name="anilistUser" maxlength="20" value="${esc(s.anilistUser)}" placeholder="e.g. timon"></label>
 </section>
 
-<fieldset class="fs"${lock}>
 <section class="sec step" id="ai" data-title="AI"><h2><b>3</b>AI</h2>
 <p class="sub">Optional. Ranks the For You rows by your taste, names genre mixes and writes short reasons. Without AI you get a default ranking.</p>
 <label>Provider<select name="aiProvider" id="aiProvider"><option value="">No AI</option>${Object.entries(PROVIDERS)
@@ -381,34 +383,33 @@ ${tmdb ? '<label class="check"><input class="sw" type="checkbox" name="removeTmd
 <label>Metadata language<select name="language">${Object.entries(LANGUAGES).map(([k, v]) => `<option value="${k}"${k === s.language ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
 <label>Time zone<span>For the time-of-day row (feel-good, late night, weekend).</span><select name="timezone">${TIMEZONES.map((t) => `<option${t === s.timezone ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
 </section>
-</fieldset>
 </form>
 
-<section class="sec step install" id="install" data-title="Install"><h2><b>5</b>Install</h2>
-<p class="sub">Save first, then paste this URL into Nuvio under Addons. Treat it like a password: whoever has it can change your settings (but nobody can see your keys).</p>
-<input type="text" readonly value="${esc(o.installUrl)}" id="installurl">
-<div class="actions"><button type="button" id="copyurl">Copy URL</button><a class="btn ghost" href="${esc(o.installUrl.replace(/^https?:/, 'stremio:'))}">Open in Stremio</a>
-<form method="post" action="/configure/token"><button class="ghost">Generate new URL</button></form></div>
-<p class="small muted">A new URL disables the old one immediately and signs out other devices.</p>
-</section>
-
-<section class="sec step" id="profiles" data-title="Profiles"><h2><b>6</b>Profiles</h2>
-<p class="sub">Sharing Nuvio? Every profile has its own watch history and install URL. By default all profiles follow the ★ default profile’s rows, AI and settings, and you can still customize a single profile.</p>
+<section class="sec step" id="profiles" data-title="Profiles"><h2><b>5</b>Profiles</h2>
+<p class="sub">One profile per Nuvio profile, each with its own watch history and install URL. Switch profiles at the top. Settings are shared unless you save them for one profile only.</p>
 ${o.profiles
   .map(
-    (p) => `<div class="conn"><div><b>${p.id === o.defaultId ? '★ ' : ''}${esc(p.label)}${p.id === o.profileId ? ' <span class="pill">this profile</span>' : ''}</b>
-<span class="small muted">${p.id === o.defaultId ? 'default profile' : 'profile'}</span></div>
-<div class="row-actions">${p.id === o.defaultId ? '' : `<form method="post" action="/profile/default"><input type="hidden" name="id" value="${esc(p.id)}"><button class="ghost">Set as default</button></form>`}
-${p.id === o.accountId ? '' : `<form method="post" action="/profile/delete" data-confirm="Delete profile “${esc(p.label)}”? Its history connection and install URL stop working."><input type="hidden" name="id" value="${esc(p.id)}"><button class="ghost danger" aria-label="Delete profile ${esc(p.label)}">Delete</button></form>`}</div></div>`,
+    (p) => `<div class="conn"><div><b>${esc(p.label)}${p.id === o.profileId ? ' <span class="pill">open</span>' : ''}</b>
+<span class="small muted">${p.nuvio ? `Nuvio: ${esc(p.nuvio)} · ` : ''}${p.custom ? 'own settings' : 'shared settings'}</span></div>
+<div class="row-actions">${p.custom && p.id === o.profileId && p.id !== o.defaultId ? `<form method="post" action="/profile/inherit"><input type="hidden" name="on" value="1"><button class="ghost">Use shared settings</button></form>` : ''}
+${p.id === o.accountId ? '' : `<form method="post" action="/profile/delete" data-confirm="Delete profile “${esc(p.label)}”? Its install URL stops working."><input type="hidden" name="id" value="${esc(p.id)}"><button class="ghost danger" aria-label="Delete profile ${esc(p.label)}">Delete</button></form>`}</div></div>`,
   )
   .join('')}
-${!inherit && o.profileId !== o.defaultId ? `<form method="post" action="/profile/inherit"><input type="hidden" name="on" value="1"><div class="actions"><button class="ghost">Follow the default profile again</button></div></form>` : ''}
-<form method="post" action="/profile/new"><label>Name of the new profile<input type="text" name="label" maxlength="30" placeholder="e.g. Lisa" required></label>
-<div class="actions"><button class="ghost">Create profile</button></div></form>
+${o.secrets.nuvio ? `<form method="post" action="/profile/sync"><div class="actions"><button class="ghost">Import profiles from Nuvio</button></div></form>` : '<p class="small muted">Connect Nuvio Sync in step 1 and your Nuvio profiles are added automatically.</p>'}
+<details class="adv"><summary class="muted">Add a profile manually</summary>
+<form method="post" action="/profile/new"><label>Name<input type="text" name="label" maxlength="30" placeholder="e.g. Lisa" required></label>
+<div class="actions"><button class="ghost">Create profile</button></div></form></details>
 </section>
 
-<section class="sec step" id="account" data-title="Account"><h2><b>7</b>Account <span class="pill">optional</span></h2>
-<p class="sub">Your account ID: <code>${esc(o.accountId)}</code></p>
+<section class="sec step" id="finish" data-title="Install & account"><h2><b>6</b>Install &amp; account</h2>
+<h3 style="margin-top:6px">Install${multi ? ` · ${esc(label(o.profileId))}` : ''}</h3>
+<p class="small muted" style="margin:0 0 8px">Save first, then add this URL in Nuvio under Addons${multi ? ', in the matching Nuvio profile. Every profile has its own URL, so turn off “Use primary addons” for that profile in Nuvio' : ''}. Treat it like a password: whoever has it can change your settings (but nobody can see your keys).</p>
+<input type="text" readonly value="${esc(o.installUrl)}" id="installurl">
+<div class="actions"><button type="button" id="copyurl">Copy URL</button>
+<form method="post" action="/configure/token"><button class="ghost">Generate new URL</button></form></div>
+<p class="small muted">A new URL disables the old one immediately and signs out other devices.</p>
+<h3>Account <span class="pill">optional</span></h3>
+<p class="small muted" style="margin:0">Your account ID: <code>${esc(o.accountId)}</code></p>
 <p class="small muted">${o.hasPassword ? 'Password is set. You can always log in with your account ID and password.' : 'Without a password you can only get back here via “Configure” on the addon in Nuvio. With a password you can also log in with your account ID.'}</p>
 <form method="post" action="/account/password">
 <input type="text" name="username" value="${esc(o.accountId)}" autocomplete="username" hidden>
@@ -428,7 +429,7 @@ ${!inherit && o.profileId !== o.defaultId ? `<form method="post" action="/profil
 </section>
 
 </div></div>
-<div class="bar"><div class="actions wide" style="margin:0 auto;flex-wrap:nowrap"><button type="button" class="ghost pager" id="prev" hidden></button><span class="sp"></span><button form="cfg" id="savebtn">Save</button><button type="button" class="ghost pager" id="next" hidden></button></div></div>`,
+<div class="bar"><div class="actions wide" style="margin:0 auto;flex-wrap:nowrap"><button type="button" class="ghost pager" id="prev" hidden>← <span class="pl"></span></button><span class="sp"></span><span class="small" id="dirty" hidden>Unsaved changes</span><span id="savebtn" class="savebtns">${multi ? '<button form="cfg" name="scope" value="this" class="ghost">Only this profile</button><button form="cfg" name="scope" value="all">Save for all</button>' : '<button form="cfg" name="scope" value="this">Save</button>'}</span><button type="button" class="ghost pager" id="next" hidden><span class="pl"></span> →</button></div></div>`,
     o.nonce,
     PAGE_JS,
   );

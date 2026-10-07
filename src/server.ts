@@ -3,12 +3,12 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { catalog, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
 import { assertPublicUrl, PROVIDERS } from './ai.ts';
 import { hashPassword, verifyPassword } from './crypto.ts';
-import { nuvioSignIn, SIMKL_ID, simklPin, simklPoll, TRAKT_ID, traktDeviceCode, traktPoll } from './history.ts';
+import { nuvioProfileList, nuvioSignIn, SIMKL_ID, simklPin, simklPoll, TRAKT_ID, traktDeviceCode, traktPoll } from './history.ts';
 import { aiUsage, jobStatus, runJob, startScheduler } from './personal.ts';
 import { checkTmdbKey, loadAnimeMap, type Type } from './sources.ts';
 import {
   configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
-  defaultProfileOf, ownSettings, rateLimit, redis, rootOf, rotateToken, saveSettings, sessionUser, updateSecrets, type AiProvider, type Settings,
+  defaultProfileOf, ownSettings, rateLimit, redis, rootOf, rotateToken, saveSettings, sessionUser, updateSecrets, type AiProvider, type Secrets, type Settings,
 } from './store.ts';
 import { configPage, homePage, LANGUAGES, loginPage, REFRESH_HOURS, TIMEZONES } from './web.ts';
 
@@ -32,7 +32,7 @@ const ip = (req: Request) => req.ip ?? 'unknown';
 const field = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 const tooMany = (res: Response) => void res.status(429).json({ error: 'rate limit' });
 
-// ---------- Addon protocol (Nuvio / Stremio) ----------
+// ---------- Addon protocol (Nuvio) ----------
 
 const TOKEN = '(?:([\\w-]{43})\\/)?';
 const MANIFEST_RE = new RegExp(`^\\/${TOKEN}manifest\\.json$`);
@@ -126,7 +126,7 @@ app.get('/health', (_req, res) => void res.send('ok'));
 app.get('/login', (_req, res) => page(res, () => loginPage(undefined, SUPPORT_URL)));
 app.get('/register', (_req, res) => res.redirect('/'));
 
-// "Configure" button in Nuvio/Stremio: the install URL is the key, even without a password
+// "Configure" button in Nuvio: the install URL is the key, even without a password
 app.get(/^\/([\w-]{43})\/configure$/, async (req, res) => {
   if (!(await rateLimit(`cfgtoken:${ip(req)}`, 20, 900))) return void res.status(429).send('Too many attempts');
   const cfg = await configByToken((req.params as any)[0]);
@@ -175,6 +175,17 @@ const auth = async (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
+// Profiles for the switcher and the profiles step: own or shared settings, mapped Nuvio profile
+async function profileInfo(root: string, nuvio: { index: number; name: string }[]) {
+  const { rows } = await db.query('select user_id, settings from configs where user_id = any($1)', [(await profilesOf(root)).map((p) => p.id)]);
+  const byId = new Map(rows.map((r) => [r.user_id, { ...DEFAULT_SETTINGS, ...r.settings } as Settings]));
+  const shared = await defaultProfileOf(root);
+  return (await profilesOf(root)).map((p) => {
+    const st = byId.get(p.id);
+    return { ...p, custom: p.id !== shared && !st?.inherit, nuvio: nuvio.find((n) => n.index === st?.nuvioProfile)?.name };
+  });
+}
+
 async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, status = 200) {
   const userId = res.locals.userId as string;
   const [cfg, root] = await Promise.all([configByUser(userId), rootOf(userId)]);
@@ -182,7 +193,7 @@ async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, 
     redis.get(`trakt:dev:${userId}`),
     redis.get(`simkl:pin:${userId}`),
     db.query('select pw_hash is not null as has from users where id = $1', [root]),
-    profilesOf(root),
+    profileInfo(root, cfg.settings.nuvioProfiles),
     jobStatus(userId),
     defaultProfileOf(userId),
     aiUsage(userId),
@@ -216,7 +227,7 @@ async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, 
 }
 
 const OK_MSGS: Record<string, string> = {
-  welcome: 'Let’s go: add your TMDB key, set everything up, save and install the addon in step 5. A password is optional.',
+  welcome: 'Let’s go: add your TMDB key, set everything up, save and install the addon in the last step. A password is optional.',
   password: 'Password saved. Other devices were signed out.',
   saved: 'Saved. Nuvio picks up changes on the next reload.',
   token: 'New install URL created. Reinstall the addon in Nuvio. Other devices were signed out.',
@@ -227,7 +238,9 @@ const OK_MSGS: Record<string, string> = {
   profile: 'Switched profile.',
   profiledeleted: 'Profile deleted.',
   imported: 'Settings imported. Reconnect Nuvio Sync / Trakt / Simkl if needed, logins are never part of a backup.',
-  default: 'Default profile set. Profiles that follow the default now use its settings.',
+  savedall: 'Saved for all profiles. Nuvio picks up changes on the next reload.',
+  synced: 'Nuvio profiles imported. Each one has its own install URL, see the last step.',
+  syncednone: 'Profiles are up to date with Nuvio.',
 };
 
 app.get('/configure', auth, async (req, res) => {
@@ -238,20 +251,50 @@ app.get('/configure', auth, async (req, res) => {
 const list = (v: unknown) => ([] as unknown[]).concat(v ?? []).map(String);
 const VALID_TZ = new Set(TIMEZONES);
 
+// Give a profile its own copy of the shared settings and keys (it no longer follows the default profile)
+async function customize(userId: string) {
+  const cfg = await configByUser(userId);
+  await updateSecrets(userId, (sec) => void Object.assign(sec, { tmdbKey: cfg.secrets.tmdbKey, aiKey: cfg.secrets.aiKey }));
+  await saveSettings(userId, { ...cfg.settings, inherit: false, defaultProfile: '' });
+}
+
+// One after another, so a family account does not start 8 jobs at once
+async function recomputeAll(root: string) {
+  for (const p of await profilesOf(root)) await runJob(p.id);
+}
+
+// Nuvio profiles become Couchpilot profiles: the main profile takes the first one, every other Nuvio profile
+// gets its own Couchpilot profile (name from Nuvio, shared settings, own history and install URL)
+async function syncNuvioProfiles(userId: string): Promise<number> {
+  const cfg = await configByUser(userId);
+  if (!cfg.nuvioOwner) return 0;
+  const list = await nuvioProfileList(cfg.nuvioOwner);
+  await saveSettings(cfg.nuvioOwner, { ...(await ownSettings(cfg.nuvioOwner)), nuvioProfiles: list });
+  const root = await rootOf(userId);
+  const { rows } = await db.query(
+    'select u.id, u.label, c.settings from users u join configs c on c.user_id = u.id where u.id = $1 or u.parent_id = $1 order by u.parent_id nulls first, u.created_at',
+    [root],
+  );
+  const used = new Set(rows.map((r) => ({ ...DEFAULT_SETTINGS, ...r.settings }).nuvioProfile));
+  for (const r of rows) {
+    const name = list.find((p) => p.index === ({ ...DEFAULT_SETTINGS, ...r.settings }).nuvioProfile)?.name;
+    if (!r.label && name) await db.query('update users set label = $2 where id = $1', [r.id, name]);
+  }
+  let created = 0;
+  for (const p of list) {
+    if (used.has(p.index) || rows.length + created >= 8) continue;
+    const { rows: ins } = await db.query('insert into users (parent_id, label) values ($1, $2) returning id', [root, p.name]);
+    await rotateToken(ins[0].id, { ...DEFAULT_SETTINGS, inherit: true, nuvioProfile: p.index });
+    created++;
+  }
+  void recomputeAll(root);
+  return created;
+}
+
 app.post('/configure', auth, async (req, res) => {
   const userId = res.locals.userId as string;
   const cfg = await configByUser(userId);
   const b = req.body;
-  if (cfg.inheritedFrom) {
-    // Follows the default profile: only the per-profile fields can be changed here
-    const own = await ownSettings(userId);
-    const anilist = field(b.anilistUser);
-    if (anilist && !/^[A-Za-z0-9_-]{2,20}$/.test(anilist)) return renderConfig(res, { ok: false, text: 'Invalid AniList username. Nothing saved.' }, 400);
-    const prof = Number(b.nuvioProfile);
-    await saveSettings(userId, { ...own, anilistUser: anilist, nuvioProfile: cfg.settings.nuvioProfiles.some((p) => p.index === prof) ? prof : own.nuvioProfile });
-    if (cfg.secrets.nuvio || cfg.secrets.trakt || cfg.secrets.simkl || anilist) void runJob(userId);
-    return res.redirect(303, '/configure?ok=saved');
-  }
   const picked = list(b.rows);
   const hours = Number(b.refreshHours);
   const language = field(b.language);
@@ -300,16 +343,35 @@ app.post('/configure', auth, async (req, res) => {
   const aiKey = field(b.aiKey).slice(0, 400);
   // Security: if the provider or Ollama URL changes, the old key is deleted. Otherwise someone with the
   // install URL could point it to their own server and have the stored key sent there.
-  const aiTargetChanged = settings.ai.provider !== cfg.settings.ai.provider || settings.ai.baseUrl !== cfg.settings.ai.baseUrl;
-  await updateSecrets(userId, (sec) => {
+  const keyUpdate = (prev: Settings['ai']) => (sec: Secrets) => {
     if (b.removeTmdb) delete sec.tmdbKey;
     else if (tmdbKey) sec.tmdbKey = tmdbKey;
     if (b.removeAiKey) delete sec.aiKey;
     else if (aiKey) sec.aiKey = aiKey;
-    else if (aiTargetChanged) delete sec.aiKey;
-  });
-  await saveSettings(userId, settings);
-  if (cfg.secrets.nuvio || cfg.secrets.trakt || cfg.secrets.simkl || settings.anilistUser) void runJob(userId);
+    else if (settings.ai.provider !== prev.provider || settings.ai.baseUrl !== prev.baseUrl) delete sec.aiKey;
+  };
+  const root = await rootOf(userId);
+  const profiles = await profilesOf(root);
+  const sharedId = await defaultProfileOf(userId);
+  const perProfile = { nuvioProfile: settings.nuvioProfile, anilistUser: settings.anilistUser };
+  if (b.scope === 'all' && profiles.length > 1) {
+    // Save to all profiles: the shared settings live in the default profile, every other profile follows them again
+    const own = await ownSettings(sharedId);
+    await updateSecrets(sharedId, keyUpdate(own.ai));
+    await saveSettings(sharedId, { ...settings, ...(sharedId === userId ? {} : { nuvioProfile: own.nuvioProfile, anilistUser: own.anilistUser }), nuvioProfiles: own.nuvioProfiles, inherit: false, defaultProfile: own.defaultProfile });
+    for (const p of profiles) {
+      if (p.id === sharedId) continue;
+      await saveSettings(p.id, { ...(await ownSettings(p.id)), ...(p.id === userId ? perProfile : {}), inherit: true });
+    }
+    void recomputeAll(root);
+    return res.redirect(303, '/configure?ok=savedall');
+  }
+  // Only this profile: profiles that followed it keep their current settings
+  if (userId === sharedId) for (const p of profiles) if (p.id !== userId && (await ownSettings(p.id)).inherit) await customize(p.id);
+  if (cfg.inheritedFrom) await customize(userId);
+  await updateSecrets(userId, keyUpdate(cfg.settings.ai));
+  await saveSettings(userId, { ...settings, inherit: false });
+  void runJob(userId);
   res.redirect(303, '/configure?ok=saved');
 });
 
@@ -359,7 +421,7 @@ app.post('/import', auth, async (req, res) => {
   const settings: Settings = {
     ...own,
     inherit: false, // importing means this profile gets its own settings
-    rows: Object.keys(ROWS).filter((id) => Array.isArray(i.rows) && i.rows.includes(id)),
+    rows: Array.isArray(i.rows) ? Object.keys(ROWS).filter((id) => i.rows.includes(id)) : DEFAULT_SETTINGS.rows,
     order: Array.isArray(i.order) ? [...new Set<string>(i.order.map(String).filter((id: string) => id in ROWS))] : [],
     names,
     refreshHours: REFRESH_HOURS.includes(Number(i.refreshHours)) ? Number(i.refreshHours) : DEFAULT_SETTINGS.refreshHours,
@@ -400,9 +462,10 @@ app.post('/account/password', auth, async (req, res) => {
   res.redirect(303, '/configure?ok=password');
 });
 
-app.post('/refresh', auth, async (_req, res) => {
+app.post('/refresh', auth, async (req, res) => {
   if (!(await rateLimit(`refresh:${res.locals.userId}`, 6, 3600))) return renderConfig(res, { ok: false, text: 'At most 6 recomputes per hour.' }, 429);
-  void runJob(res.locals.userId);
+  if (req.body.all === '1') void recomputeAll(await rootOf(res.locals.userId));
+  else void runJob(res.locals.userId);
   res.redirect(303, '/configure?ok=refresh');
 });
 
@@ -413,14 +476,25 @@ app.post('/connect/nuvio', auth, async (req, res) => {
   if (!(await rateLimit(`nuvio:${userId}`, 5, 900))) return renderConfig(res, { ok: false, text: 'Too many attempts, try again in 15 minutes.' }, 429);
   try {
     const { refreshToken, profiles } = await nuvioSignIn(field(req.body.email).slice(0, 200), field(req.body.password).slice(0, 200));
-    await updateSecrets(userId, (sec) => void (sec.nuvio = { refreshToken }));
-    await saveSettings(userId, { ...(await ownSettings(userId)), nuvioProfiles: profiles.slice(0, 20), nuvioProfile: profiles[0]?.index ?? 1 });
-    await redis.del(`nuvio:at:${userId}`);
-    void runJob(userId);
+    const owner = (await configByUser(userId)).nuvioOwner ?? (await defaultProfileOf(userId)); // one login per account
+    await updateSecrets(owner, (sec) => void (sec.nuvio = { refreshToken }));
+    await saveSettings(owner, { ...(await ownSettings(owner)), nuvioProfiles: profiles, nuvioProfile: (await ownSettings(owner)).nuvioProfile });
+    await redis.del(`nuvio:at:${owner}`);
+    await syncNuvioProfiles(userId);
     res.redirect(303, '/configure?ok=nuvio');
   } catch (err) {
     console.error('nuvio connect:', (err as Error).message);
     await renderConfig(res, { ok: false, text: 'Nuvio login failed. Check email and password.' }, 400);
+  }
+});
+
+app.post('/profile/sync', auth, async (_req, res) => {
+  try {
+    const n = await syncNuvioProfiles(res.locals.userId);
+    res.redirect(303, `/configure?ok=${n ? 'synced' : 'syncednone'}`);
+  } catch (err) {
+    console.error('nuvio profiles:', (err as Error).message);
+    await renderConfig(res, { ok: false, text: 'Could not load your Nuvio profiles. Try reconnecting Nuvio Sync.' }, 502);
   }
 });
 
@@ -512,27 +586,14 @@ app.post('/profile/new', auth, async (req, res) => {
   await login(res, id, '/configure?ok=profile');
 });
 
-// Make a profile the default: all profiles that follow the default use its settings and keys
-app.post('/profile/default', auth, async (req, res) => {
-  const target = field(req.body.id);
-  const root = await rootOf(res.locals.userId);
-  if (!(await profilesOf(root)).some((p) => p.id === target)) return renderConfig(res, { ok: false, text: 'Profile not found.' }, 404);
-  const previous = await defaultProfileOf(root);
-  if (previous !== target) await saveSettings(previous, { ...(await ownSettings(previous)), inherit: false }); // old default keeps its own settings
-  await saveSettings(target, { ...(await ownSettings(target)), inherit: false });
-  await saveSettings(root, { ...(await ownSettings(root)), defaultProfile: target === root ? '' : target });
-  res.redirect(303, '/configure?ok=default');
-});
-
-// Follow the default profile again, or copy its settings once and fine-tune them for this profile
+// Use the shared settings again (on), or copy them once to fine-tune this profile (off)
 app.post('/profile/inherit', auth, async (req, res) => {
   const userId = res.locals.userId as string;
   const cfg = await configByUser(userId);
   if (req.body.on === '1') {
     await saveSettings(userId, { ...(await ownSettings(userId)), inherit: true });
   } else {
-    await saveSettings(userId, { ...cfg.settings, inherit: false });
-    await updateSecrets(userId, (sec) => void Object.assign(sec, { tmdbKey: cfg.secrets.tmdbKey, aiKey: cfg.secrets.aiKey }));
+    await customize(userId);
   }
   void runJob(userId);
   res.redirect(303, '/configure?ok=saved');

@@ -1,8 +1,8 @@
 # Couchpilot
 
-Your couch, on autopilot: an unofficial, self-hosted Cinemeta replacement for Nuvio and Stremio with personal rows and AI recommendations from your watch history.
+Your couch, on autopilot: an unofficial, self-hosted Cinemeta replacement for Nuvio with personal rows and AI recommendations from your watch history.
 
-> Couchpilot is a community project and not affiliated with Nuvio, Stremio, TMDB, AniList, Trakt or Simkl. It only provides metadata and catalogs, no streams.
+> Couchpilot is a community project and not affiliated with Nuvio, TMDB, AniList, Trakt or Simkl. It only provides metadata and catalogs, no streams.
 
 ## Features
 
@@ -13,8 +13,9 @@ Your couch, on autopilot: an unofficial, self-hosted Cinemeta replacement for Nu
 - **AI:** OpenAI, Anthropic, Gemini, OpenRouter, Ollama with your own key. Ranks, names mixes and writes short reasons into the description. Without AI you get a default ranking.
 - **Metadata:** "Enhanced" keeps Cinemeta's IMDb rating and episode IDs (what stream addons expect) and adds TMDB: localized titles, descriptions, genres and episode names, HD backgrounds, localized posters and title logos, cast/director, YouTube trailers, episode thumbnails. Each part can be switched off; "Cinemeta only" is available too.
 - **AI cost:** the AI section shows real token usage of the last 30 days and an estimated monthly cost for the chosen refresh interval.
+- **Backup:** export/import your settings as a JSON file (optionally with TMDB/AI keys), so you don't need a password.
 - **Usability:** works without an account; show/hide, rename and reorder rows; optional password.
-- **Profiles:** one per person/Nuvio profile, each with its own watch history and install URL. Profiles follow the ★ default profile's rows, AI and settings, and any profile can be customized on its own.
+- **Profiles:** connecting Nuvio Sync imports your Nuvio profiles, each with its own watch history and install URL. Switch profiles at the top of the config page, then save for all profiles or only the open one (e.g. German metadata for one profile, English for another). Recompute one or all profiles.
 - **Precompute:** a background job keeps rows of active users fresh, the app only reads finished results. The config page shows live progress.
 - **No server TMDB key:** every user adds their own free TMDB key.
 
