@@ -1,0 +1,63 @@
+services:
+  addon:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://nuvio:${POSTGRES_PASSWORD}@postgres:5432/nuvio
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      PUBLIC_URL: https://${DOMAIN}
+      TRUST_PROXY: "1" # only Caddy in front, it sets the real client IP
+      MASTER_KEY_FILE: /run/secrets/master_key
+      TRAKT_CLIENT_ID: ${TRAKT_CLIENT_ID:-}
+      TRAKT_CLIENT_SECRET: ${TRAKT_CLIENT_SECRET:-}
+      SIMKL_CLIENT_ID: ${SIMKL_CLIENT_ID:-}
+      SUPPORT_URL: ${SUPPORT_URL:-}
+      IMPRINT_URL: ${IMPRINT_URL:-}
+      PRIVACY_URL: ${PRIVACY_URL:-}
+    secrets: [master_key]
+    depends_on: [postgres, redis]
+    # Hardening: read-only filesystem, no Linux capabilities, no privilege escalation
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nuvio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: nuvio
+    volumes: [pgdata:/var/lib/postgresql/data]
+    security_opt: [no-new-privileges:true]
+    # no public ports: only reachable inside the Docker network
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "exec redis-server --save 300 1 --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes: [redisdata:/data]
+    security_opt: [no-new-privileges:true]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+
+secrets:
+  master_key:
+    file: ./secrets/master_key
+
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:

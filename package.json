@@ -1,0 +1,29 @@
+{
+  "name": "couchpilot",
+  "version": "0.5.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Unofficial Cinemeta replacement with AI-personalized rows for Nuvio and Stremio",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "dev": "node --experimental-strip-types --env-file=.env --watch src/server.ts",
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/*.test.ts"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "undici": "^8.11.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2"
+  }
+}

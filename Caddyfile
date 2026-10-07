@@ -1,0 +1,8 @@
+{$DOMAIN} {
+	encode gzip
+	header -Server
+	request_body {
+		max_size 64KB
+	}
+	reverse_proxy addon:7000
+}

@@ -1,0 +1,10 @@
+# Test locally without domain/HTTPS:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+services:
+  addon:
+    ports: ["127.0.0.1:7000:7000"]
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:7000}
+      TRUST_PROXY: "0"
+  caddy:
+    profiles: [prod] # do not start Caddy locally
