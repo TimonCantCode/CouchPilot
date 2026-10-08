@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, isOn, ROWS, season } from './addon.ts';
+import { defaultName, isOn, orderedRowIds, ROWS, season } from './addon.ts';
 import { parseItems } from './ai.ts';
 import { ageFrom, trailerFrom } from './sources.ts';
 import { DEFAULT_SETTINGS } from './store.ts';
@@ -56,4 +56,26 @@ test('seasonal row only in October and December', () => {
   assert.equal(season(new Date('2026-10-15')), 'halloween');
   assert.equal(season(new Date('2026-12-01')), 'christmas');
   assert.equal(season(new Date('2026-07-01')), null);
+});
+
+test('save for all copies only what changed', async () => {
+  const { apply, changes } = await import('./diff.ts');
+  const english = { ...DEFAULT_SETTINGS, language: 'en-US', refreshHours: 6, meta: { ...DEFAULT_SETTINGS.meta } };
+  const german = { ...DEFAULT_SETTINGS, language: 'de-DE', refreshHours: 6, meta: { ...DEFAULT_SETTINGS.meta, cast: false } };
+  // nothing changed -> nothing to copy (also when the form sends the rows in a different order)
+  assert.deepEqual(changes(english, { ...english, order: [...Object.keys(ROWS)].reverse().filter((id) => isOn(id, english)) }).length, 1, 'only a real reorder counts');
+  assert.deepEqual(changes(english, structuredClone(english)), []);
+  const formOrder = [...orderedRowIds(english).filter((id) => isOn(id, english)), ...orderedRowIds(english).filter((id) => !isOn(id, english))];
+  assert.deepEqual(changes(english, { ...english, order: formOrder }), [], 'the page lists active rows first, that is no change');
+  // English profile changes the refresh interval and trailers
+  const edited = { ...english, refreshHours: 12, meta: { ...english.meta, trailers: false } };
+  const out = apply(german, changes(english, edited), edited);
+  assert.equal(out.refreshHours, 12);
+  assert.equal(out.meta.trailers, false);
+  assert.equal(out.language, 'de-DE', 'German stays German');
+  assert.equal(out.meta.cast, false, 'own meta choices stay');
+  // switching one row on only adds that row
+  const withRow = { ...english, rows: [...english.rows, 'toprated-movie'] };
+  const g2 = apply({ ...german, rows: ['trending-movie'], order: Object.keys(ROWS) }, changes(english, withRow), withRow);
+  assert.deepEqual(g2.rows.sort(), ['toprated-movie', 'trending-movie']);
 });

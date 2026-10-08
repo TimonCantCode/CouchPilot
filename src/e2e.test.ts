@@ -156,6 +156,15 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     assert.match((await fetch(B + '/')).headers.get('content-security-policy') ?? '', /script-src 'nonce-/);
   });
 
+  test('health: JSON for tools, status page for browsers', async () => {
+    const j = (await (await fetch(B + '/health')).json()) as any;
+    assert.equal(j.ok, true);
+    assert.equal(j.days.length, 30);
+    assert.ok(j.checks.every((c: any) => c.ok));
+    const html = await (await fetch(B + '/health', { headers: { accept: 'text/html' } })).text();
+    assert.match(html, /All systems operational/);
+  });
+
   test('set up: import settings, connect Nuvio, profiles come from Nuvio', async () => {
     assert.equal((await owner.req('/start', {})).status, 303);
     const data = JSON.stringify({ app: 'couchpilot', version: 1, settings: { ai: { provider: 'openai', model: '', baseUrl: '' }, hideWatched: true }, keys: { tmdbKey: TMDB_KEY, aiKey: AI_KEY } });
@@ -196,14 +205,26 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     await owner.req('/profile/switch', { id: timonId });
     form = cfgForm(await owner.page());
     assert.equal(form.get('language'), 'en-US', 'Timon kept English');
+    // save for all copies only the change: Gast gets the new interval but keeps German
+    form.set('refreshHours', '12');
+    form.set('scope', 'all');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    await owner.req('/profile/switch', { id: gastId });
+    let gast = await owner.page();
+    assert.match(gast, /<option value="de-DE" selected/, 'Gast keeps German');
+    assert.match(gast, /<option value="12" selected/, 'Gast got the new interval');
+    await owner.req('/profile/switch', { id: timonId });
+    form = cfgForm(await owner.page());
+    assert.equal(form.get('language'), 'en-US');
     form.set('language', 'fr-FR');
     form.delete('rows');
     for (const id of ['trending-movie', 'foryou-movie']) form.append('rows', id);
     form.set('scope', 'all');
     assert.equal((await owner.req('/configure', form)).status, 303);
     await owner.req('/profile/switch', { id: gastId });
-    assert.match(await owner.page(), /<option value="fr-FR" selected/, 'save for all reached Gast');
-    const m = await json(installUrl(await owner.page()));
+    gast = await owner.page();
+    assert.match(gast, /<option value="fr-FR" selected/, 'a changed language reaches Gast too');
+    const m = await json(installUrl(gast));
     const ids = m.catalogs.map((c: any) => c.id);
     assert.ok(ids.includes('trending-movie') && !ids.includes('popular-movie'), ids.join());
     await owner.req('/profile/switch', { id: timonId });

@@ -91,6 +91,9 @@ details.more[open]>summary::before{transform:rotate(90deg)}details.more>summary 
 details.more .rows{padding-bottom:10px}#rowmore .handle,#rowmore .mv{visibility:hidden}
 form:not(:has([name=kidsOn]:checked)) .kids-only{display:none}
 .chips{display:flex;flex-wrap:wrap;gap:0 18px}.chips .check{margin-top:8px}
+.stats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}.stats .sec{margin:0;display:flex;flex-direction:column;gap:2px}.stats b{font-size:26px;letter-spacing:-.02em}
+.bars{display:flex;gap:3px;height:38px}.bars .b{flex:1;border-radius:3px;background:#2a2a31}.bars .up{background:var(--ok)}.bars .warn{background:#f5a524}.bars .down{background:var(--accent)}
+.bars-legend{display:flex;justify-content:space-between;margin-top:6px}
 details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}details.adv>summary{cursor:pointer;font-weight:600}
 /* Save bar */
 .bar{position:fixed;z-index:20;left:0;right:0;bottom:0;padding:12px 16px;background:var(--bg);border-top:1px solid var(--line)}
@@ -156,7 +159,7 @@ const legal = { imprint: process.env.IMPRINT_URL, privacy: process.env.PRIVACY_U
 const safeUrl = (u?: string) => (u && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : '');
 const FOOTER = `<footer class="foot"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB" width="90" height="12"></a>
 <p>This product uses the TMDB API but is not endorsed or certified by TMDB. Couchpilot is an unofficial community project and not affiliated with Nuvio, TMDB, AniList, Trakt or Simkl.</p>
-${[`<a href="${REPO}" target="_blank" rel="noopener noreferrer">Source code on GitHub</a>`, safeUrl(legal.imprint) && `<a href="${esc(safeUrl(legal.imprint))}" target="_blank" rel="noopener noreferrer">Imprint</a>`, safeUrl(legal.privacy) && `<a href="${esc(safeUrl(legal.privacy))}" target="_blank" rel="noopener noreferrer">Privacy</a>`].filter(Boolean).join(' · ')}</footer>`;
+${[`<a href="${REPO}" target="_blank" rel="noopener noreferrer">Source code on GitHub</a>`, `<a href="/health">Status</a>`, safeUrl(legal.imprint) && `<a href="${esc(safeUrl(legal.imprint))}" target="_blank" rel="noopener noreferrer">Imprint</a>`, safeUrl(legal.privacy) && `<a href="${esc(safeUrl(legal.privacy))}" target="_blank" rel="noopener noreferrer">Privacy</a>`].filter(Boolean).join(' · ')}</footer>`;
 
 const page = (title: string, body: string, nonce = '', script = '') => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -217,6 +220,39 @@ ${previewRow('Complete the Saga', [270, 300, 230, 330, 250, 290, 210, 310, 260])
 <div class="sec" style="margin:0"><b>Anime rows only</b><p class="small muted">No setup and no TMDB key, plus search and metadata.</p><input type="text" readonly value="${esc(publicUrl)}/manifest.json"></div>
 </div></div>`,
   );
+
+export type Health = {
+  ok: boolean; version: string; uptimeSec: number; startedAt: string; memoryMb: number; jobsRunning: number; animeTitles: number;
+  checks: { name: string; ok: boolean; ms: number | null }[];
+  days: { date: string; pct: number | null }[];
+};
+const duration = (s: number) => {
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d ? `${d}d ${h}h ${m}m` : h ? `${h}h ${m}m` : `${m}m ${Math.floor(s % 60)}s`;
+};
+
+// Status page: live checks plus a 30-day uptime history (one bar per day)
+export const healthPage = (h: Health) => {
+  const known = h.days.filter((d) => d.pct !== null);
+  const avg = known.length ? known.reduce((a, d) => a + d.pct!, 0) / known.length : null;
+  const bar = (p: number | null) => (p === null ? 'none' : p >= 99.5 ? 'up' : p >= 95 ? 'warn' : 'down');
+  return page(
+    'Status',
+    `${brand('<a class="btn ghost" href="/">Home</a>')}
+<div class="note ${h.ok ? 'ok' : 'err'}" style="font-size:18px"><b>${h.ok ? 'All systems operational' : 'Problem detected'}</b></div>
+<div class="stats">
+<div class="sec"><span class="muted small">Uptime since restart</span><b>${duration(h.uptimeSec)}</b><span class="muted small">since ${esc(h.startedAt.slice(0, 16).replace('T', ' '))} UTC</span></div>
+<div class="sec"><span class="muted small">Last 30 days</span><b>${avg === null ? '–' : `${avg.toFixed(2)} %`}</b><span class="muted small">available</span></div>
+<div class="sec"><span class="muted small">Background jobs</span><b>${h.jobsRunning}</b><span class="muted small">running now</span></div>
+</div>
+<section class="sec"><h3 style="margin-top:0">Uptime, last 30 days</h3>
+<div class="bars">${h.days.map((d) => `<span class="b ${bar(d.pct)}" title="${esc(d.date)}: ${d.pct === null ? 'no data' : `${d.pct.toFixed(2)} %`}"></span>`).join('')}</div>
+<div class="small muted bars-legend"><span>30 days ago</span><span>today</span></div></section>
+<section class="sec"><h3 style="margin-top:0">Checks</h3>
+${h.checks.map((c) => `<div class="conn" style="margin-top:8px"><b><span class="dot${c.ok ? ' on' : ''}"></span>${esc(c.name)}</b><span class="small muted">${c.ok ? `${c.ms} ms` : 'not reachable'}</span></div>`).join('')}
+<p class="small muted" style="margin:14px 0 0">Version ${esc(h.version)} · ${h.memoryMb} MB memory · ${h.animeTitles.toLocaleString('en')} anime titles mapped · <code>curl …/health</code> returns the same as JSON</p></section>`,
+  );
+};
 
 export const loginPage = (error?: string, supportUrl?: string) =>
   page(
@@ -393,8 +429,8 @@ export function configPage(o: {
   const inherit = !!o.inheritedFrom;
   const scopeNote = multi
     ? `<div class="note" data-steps="rows,ai,settings">${inherit
-        ? `<b>${esc(label(o.profileId))} uses the shared settings.</b> “Save for all” keeps every profile in sync, “Only this profile” fine-tunes just this one.`
-        : `<b>${esc(label(o.profileId))} has its own settings.</b> “Save for all” applies them to every profile, “Only this profile” keeps them here.`}</div>`
+        ? `<b>${esc(label(o.profileId))} uses the shared settings.</b> “Save for all” copies just what you change to every profile, “Only this profile” fine-tunes just this one.`
+        : `<b>${esc(label(o.profileId))} has its own settings.</b> “Save for all” copies just what you change to every profile, “Only this profile” keeps it here.`}</div>`
     : '';
   const steps: [string, string, boolean][] = [
     ['history', 'Watch history', hasHistory],

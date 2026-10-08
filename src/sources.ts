@@ -187,6 +187,7 @@ export const tmdbList = async (path: string, type: Type, key: string, page: numb
 let anilistIds = new Map<number, { imdb?: string; kitsu?: number }>();
 let kitsuToAnilist = new Map<number, number>();
 let animeImdb = new Set<string>(); // all IMDb IDs that are anime
+export const animeMapSize = () => anilistIds.size;
 let imdbToAnilist = new Map<string, number>();
 
 export async function loadAnimeMap() {

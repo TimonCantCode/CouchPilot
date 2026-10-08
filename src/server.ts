@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { catalog, defaultName, KID_GENRES, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
@@ -6,12 +7,13 @@ import { assertPublicUrl, PROVIDERS } from './ai.ts';
 import { hashPassword, verifyPassword } from './crypto.ts';
 import { nuvioProfileList, nuvioSignIn, SIMKL_ID, simklPin, simklPoll, TRAKT_ID, traktDeviceCode, traktPoll } from './history.ts';
 import { aiUsage, jobStatus, markQueued, runJob, startScheduler } from './personal.ts';
-import { checkTmdbKey, loadAnimeMap, type Type } from './sources.ts';
+import { animeMapSize, checkTmdbKey, loadAnimeMap, type Type } from './sources.ts';
+import { apply, changes } from './diff.ts';
 import {
   configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
   defaultProfileOf, ownSettings, rateLimit, redis, rootOf, rotateToken, saveSettings, sessionUser, updateSecrets, type AiProvider, type Secrets, type Settings,
 } from './store.ts';
-import { configPage, homePage, LANGUAGES, loginPage, REFRESH_HOURS, TIMEZONES } from './web.ts';
+import { configPage, healthPage, homePage, LANGUAGES, loginPage, REFRESH_HOURS, TIMEZONES } from './web.ts';
 
 const PORT = Number(process.env.PORT ?? 7000);
 const PUBLIC_URL = (process.env.PUBLIC_URL ?? `http://localhost:${PORT}`).replace(/\/$/, '');
@@ -124,14 +126,68 @@ async function login(res: Response, userId: string, to = '/configure', viaPasswo
 const page = (res: Response, html: (nonce: string) => string, status = 200) => void res.status(status).send(html(res.locals.nonce));
 
 app.get('/', (_req, res) => page(res, () => homePage(PUBLIC_URL, SUPPORT_URL)));
-// Health check for Docker: also checks the database and Redis
-app.get('/health', async (_req, res) => {
+// ---------- Health / status page ----------
+// JSON for Docker and monitoring tools, a status page in the browser. Every minute the server marks itself
+// as up in a per-day Redis bitmap (one bit per minute), which gives the 30-day uptime history.
+const STARTED = Date.now();
+const VERSION = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
+const timed = async (fn: () => Promise<unknown>) => {
+  const t = Date.now();
   try {
-    await Promise.all([db.query('select 1'), redis.ping()]);
-    res.send('ok');
+    await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))]);
+    return { ok: true, ms: Date.now() - t };
   } catch {
-    res.status(503).send('unhealthy');
+    return { ok: false, ms: null };
   }
+};
+const checks = async () => {
+  const [pg, rd] = await Promise.all([timed(() => db.query('select 1')), timed(() => redis.ping())]);
+  return [{ name: 'Database (Postgres)', ...pg }, { name: 'Cache (Redis)', ...rd }];
+};
+const dayKey = (d: Date) => `uptime:${d.toISOString().slice(0, 10)}`;
+async function heartbeat() {
+  try {
+    if (!(await checks()).every((c) => c.ok)) return;
+    const now = new Date();
+    await redis.multi().setbit(dayKey(now), now.getUTCHours() * 60 + now.getUTCMinutes(), 1).expire(dayKey(now), 40 * 86400).set('uptime:first', now.toISOString(), 'NX').exec();
+  } catch {
+    // no heartbeat = counted as down, which is what happened
+  }
+}
+async function uptimeDays() {
+  const first = Date.parse((await redis.get('uptime:first')) ?? new Date().toISOString());
+  const now = Date.now();
+  return Promise.all(
+    Array.from({ length: 30 }, async (_, i) => {
+      const d = new Date(now - (29 - i) * 86400_000);
+      const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      const from = Math.max(dayStart, first);
+      const to = Math.min(dayStart + 86400_000, now);
+      const minutes = Math.floor((to - from) / 60_000);
+      if (minutes < 1) return { date: d.toISOString().slice(0, 10), pct: null };
+      const up = await redis.bitcount(dayKey(d));
+      return { date: d.toISOString().slice(0, 10), pct: Math.min(100, (up / minutes) * 100) };
+    }),
+  );
+}
+app.get('/health', async (req, res) => {
+  const list = await checks();
+  const ok = list.every((c) => c.ok);
+  const [locks, days] = ok ? await Promise.all([redis.keys('pers:lock:*'), uptimeDays()]) : [[], []];
+  const h = {
+    ok,
+    version: VERSION,
+    uptimeSec: Math.round((Date.now() - STARTED) / 1000),
+    startedAt: new Date(STARTED).toISOString(),
+    memoryMb: Math.round(process.memoryUsage().rss / 1e6),
+    jobsRunning: locks.length,
+    animeTitles: animeMapSize(),
+    checks: list,
+    days,
+  };
+  res.status(ok ? 200 : 503);
+  if (req.accepts(['json', 'html']) === 'html') return void res.send(healthPage(h));
+  res.json(h);
 });
 app.get('/login', (_req, res) => page(res, () => loginPage(undefined, SUPPORT_URL)));
 app.get('/register', (_req, res) => res.redirect('/'));
@@ -374,25 +430,37 @@ app.post('/configure', auth, async (req, res) => {
   const aiKey = field(b.aiKey).slice(0, 400);
   // Security: if the provider or Ollama URL changes, the old key is deleted. Otherwise someone with the
   // install URL could point it to their own server and have the stored key sent there.
-  const keyUpdate = (prev: Settings['ai']) => (sec: Secrets) => {
+  const keyUpdate = (prev: Settings['ai'], next: Settings['ai']) => (sec: Secrets) => {
     if (b.removeTmdb) delete sec.tmdbKey;
     else if (tmdbKey) sec.tmdbKey = tmdbKey;
     if (b.removeAiKey) delete sec.aiKey;
     else if (aiKey) sec.aiKey = aiKey;
-    else if (settings.ai.provider !== prev.provider || settings.ai.baseUrl !== prev.baseUrl) delete sec.aiKey;
+    else if (next.provider !== prev.provider || next.baseUrl !== prev.baseUrl) delete sec.aiKey;
   };
   const root = await rootOf(userId);
   const profiles = await profilesOf(root);
   const sharedId = await defaultProfileOf(userId);
   const perProfile = { nuvioProfile: settings.nuvioProfile, anilistUser: settings.anilistUser };
   if (b.scope === 'all' && profiles.length > 1) {
-    // Save to all profiles: the shared settings live in the default profile, every other profile follows them again
-    const own = await ownSettings(sharedId);
-    await updateSecrets(sharedId, keyUpdate(own.ai));
-    await saveSettings(sharedId, { ...settings, ...(sharedId === userId ? {} : { nuvioProfile: own.nuvioProfile, anilistUser: own.anilistUser }), nuvioProfiles: own.nuvioProfiles, inherit: false, defaultProfile: own.defaultProfile });
+    // Save for all: only what was changed on the page goes to the other profiles, their own differences stay.
+    // Profiles that follow the shared settings get it through the shared (default) profile.
+    const changed = changes(cfg.settings, settings);
     for (const p of profiles) {
-      if (p.id === sharedId) continue;
-      await saveSettings(p.id, { ...(await ownSettings(p.id)), ...(p.id === userId ? perProfile : {}), inherit: true });
+      const own = await ownSettings(p.id);
+      const follows = own.inherit && p.id !== sharedId;
+      if (p.id === userId) {
+        if (follows) {
+          await saveSettings(p.id, { ...own, ...perProfile });
+          continue;
+        }
+        await updateSecrets(p.id, keyUpdate(cfg.settings.ai, settings.ai));
+        await saveSettings(p.id, { ...settings, inherit: false, defaultProfile: own.defaultProfile, nuvioProfiles: own.nuvioProfiles });
+        continue;
+      }
+      if (follows) continue;
+      const next = apply(own, changed, settings);
+      await updateSecrets(p.id, keyUpdate(own.ai, next.ai));
+      await saveSettings(p.id, next);
     }
     void recomputeAll(root);
     return res.redirect(303, '/configure?ok=savedall');
@@ -400,7 +468,7 @@ app.post('/configure', auth, async (req, res) => {
   // Only this profile: profiles that followed it keep their current settings
   if (userId === sharedId) for (const p of profiles) if (p.id !== userId && (await ownSettings(p.id)).inherit) await customize(p.id);
   if (cfg.inheritedFrom) await customize(userId);
-  await updateSecrets(userId, keyUpdate(cfg.settings.ai));
+  await updateSecrets(userId, keyUpdate(cfg.settings.ai, settings.ai));
   await saveSettings(userId, { ...settings, inherit: false });
   void runJob(userId);
   res.redirect(303, '/configure?ok=saved');
@@ -695,6 +763,8 @@ await migrate();
 void loadAnimeMap();
 setInterval(loadAnimeMap, 24 * 3600 * 1000).unref();
 startScheduler();
+void heartbeat();
+setInterval(heartbeat, 60_000).unref();
 // Cleanup: delete configs that were created but never installed and have no password after 7 days
 setInterval(async () => {
   try {
