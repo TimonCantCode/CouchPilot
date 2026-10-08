@@ -13,6 +13,7 @@ export const LANGUAGES: Record<string, string> = {
   'ja-JP': '日本語',
 };
 export const REFRESH_HOURS = [1, 3, 6, 12, 24];
+export const AI_LIMITS = [20, 40, 100, 200];
 export const KID_AGES = [0, 6, 12, 16];
 const KID_GENRE_NAMES: Record<string, string> = { horror: 'Horror', thriller: 'Thriller', crime: 'Crime', war: 'War', romance: 'Romance', mystery: 'Mystery' };
 export const TIMEZONES = [
@@ -419,14 +420,14 @@ export function configPage(o: {
   const usd = (i: number, out: number) => (price ? (i * price[0] + out * price[1]) / 1e6 : null);
   const money = (v: number | null) => (v === null ? 'price unknown for this model' : v < 0.01 ? '< $0.01' : `≈ $${v.toFixed(2)}`);
   const callsPerRun = EST_CALLS_PER_RUN + s.customRows.filter((r) => r.prompt).length;
-  const runsPerMonth = Math.min(24 / s.refreshHours, 40 / callsPerRun) * 30;
+  const runsPerMonth = Math.min(24 / s.refreshHours, s.aiDailyLimit / callsPerRun) * 30;
   const estIn = runsPerMonth * callsPerRun * EST_CALL.in;
   const estOut = runsPerMonth * callsPerRun * EST_CALL.out;
   const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
   const usageBox = ai.provider
     ? `<div class="conn" style="display:block"><b>Cost</b>
 <p class="small muted" style="margin:4px 0">Last 30 days: ${o.aiUsage.calls} calls, ${k(o.aiUsage.in)} in / ${k(o.aiUsage.out)} out tokens, ${money(usd(o.aiUsage.in, o.aiUsage.out))}</p>
-<p class="small muted" style="margin:0">Estimate when you use Nuvio daily, refreshing every ${s.refreshHours} h: ${money(usd(estIn, estOut))} per month (max. 40 calls/day). ${ai.provider === 'ollama' ? 'Ollama runs on your own hardware, so there are no API costs.' : 'Prices are list prices and may change; your provider’s dashboard is exact.'}</p></div>`
+<p class="small muted" style="margin:0">Estimate when you use Nuvio daily, refreshing every ${s.refreshHours} h: ${money(usd(estIn, estOut))} per month (max. ${s.aiDailyLimit} calls/day). ${ai.provider === 'ollama' ? 'Ollama runs on your own hardware, so there are no API costs.' : 'Prices are list prices and may change; your provider’s dashboard is exact.'}</p></div>`
     : '';
   const label = (id: string) => o.profiles.find((p) => p.id === id)?.label ?? 'default profile';
   const inherit = !!o.inheritedFrom;
@@ -496,7 +497,7 @@ ${o.secrets.aiKey ? '<label class="check"><input class="sw" type="checkbox" name
 <label class="check"><input class="sw" type="checkbox" name="aiReasons" value="1"${s.aiReasons ? ' checked' : ''}>Short reason in the description (“Because you liked Dark …”)</label>
 <label class="check"><input class="sw" type="checkbox" name="aiSearch" value="1"${s.aiSearch ? ' checked' : ''}>AI search: Nuvio's search also understands descriptions like “the movie with the dream in a dream” (3+ words, max. 30 per day)</label>
 ${usageBox}
-<p class="small muted">At most 40 AI calls per day, so your key can’t be drained.</p>
+<label>Daily AI limit<span>Protects your key if your install URL leaks or something goes wrong. Resets at midnight; a recompute uses about 5 calls.</span><select name="aiDailyLimit">${AI_LIMITS.map((n) => `<option value="${n}"${n === s.aiDailyLimit ? ' selected' : ''}>${n} calls per day</option>`).join('')}</select></label>
 </div>
 </section>
 

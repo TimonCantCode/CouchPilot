@@ -11,7 +11,6 @@ import { cached, configByUser, db, rateLimit, redis, type UserConfig } from './s
 type Stored = { metas: Meta[]; title?: string };
 const rowKey = (userId: string, row: string) => `pers:${userId}:${row}`;
 const msg = (err: unknown) => (err as Error).message;
-const AI_CALLS_PER_DAY = 40; // protects the user's key even if someone abuses their install URL
 
 // Everything this profile has watched (raw IDs + anime catalog IDs), for "hide watched" in the standard rows
 export const watchedIds = (userId: string) => redis.smembers(`pers:watched:${userId}`);
@@ -198,7 +197,7 @@ const userDay = (tz: string) => {
 
 // AI call with a daily limit per user
 async function ai(ctx: JobCtx, system: string, user: string): Promise<string> {
-  if (!(await rateLimit(`ai:${ctx.userId}:${userDay(ctx.cfg.settings.timezone)}`, AI_CALLS_PER_DAY, 2 * 86400))) throw new Error('daily AI limit reached');
+  if (!(await rateLimit(`ai:${ctx.userId}:${userDay(ctx.cfg.settings.timezone)}`, ctx.cfg.settings.aiDailyLimit, 2 * 86400))) throw new Error('daily AI limit reached');
   const { text, usage } = await complete(ctx.cfg.settings.ai, ctx.cfg.secrets.aiKey, system, user);
   await recordUsage(ctx.userId, usage);
   return text;

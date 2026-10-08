@@ -13,7 +13,7 @@ import {
   configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
   defaultProfileOf, ownSettings, rateLimit, redis, rootOf, rotateToken, saveSettings, sessionUser, updateSecrets, type AiProvider, type Secrets, type Settings,
 } from './store.ts';
-import { configPage, healthPage, homePage, LANGUAGES, loginPage, REFRESH_HOURS, TIMEZONES } from './web.ts';
+import { configPage, healthPage, homePage, LANGUAGES, loginPage, REFRESH_HOURS, AI_LIMITS, TIMEZONES } from './web.ts';
 
 const PORT = Number(process.env.PORT ?? 7000);
 const PUBLIC_URL = (process.env.PUBLIC_URL ?? `http://localhost:${PORT}`).replace(/\/$/, '');
@@ -407,6 +407,7 @@ app.post('/configure', auth, async (req, res) => {
     aiPrompt: field(b.aiPrompt).slice(0, 500),
     aiReasons: b.aiReasons === '1',
     hideWatched: b.hideWatched === '1',
+    aiDailyLimit: AI_LIMITS.includes(Number(b.aiDailyLimit)) ? Number(b.aiDailyLimit) : DEFAULT_SETTINGS.aiDailyLimit,
     aiSearch: b.aiSearch === '1',
     kids: {
       on: b.kidsOn === '1',
@@ -493,7 +494,7 @@ app.post('/export', auth, async (req, res) => {
     exportedAt: new Date().toISOString(),
     settings: {
       rows: s.rows, order: s.order, names: s.names, refreshHours: s.refreshHours, language: s.language, timezone: s.timezone,
-      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, customRows: s.customRows, aiSearch: s.aiSearch, kids: s.kids,
+      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, customRows: s.customRows, aiSearch: s.aiSearch, aiDailyLimit: s.aiDailyLimit, kids: s.kids,
     },
   };
   // Keys only on request; Nuvio/Trakt/Simkl logins are never exported (rotating tokens must exist only once)
@@ -544,6 +545,7 @@ app.post('/import', auth, async (req, res) => {
     },
     anilistUser: /^[A-Za-z0-9_-]{2,20}$/.test(anilist) ? anilist : '',
     hideWatched: i.hideWatched !== false,
+    aiDailyLimit: AI_LIMITS.includes(Number(i.aiDailyLimit)) ? Number(i.aiDailyLimit) : DEFAULT_SETTINGS.aiDailyLimit,
     aiSearch: i.aiSearch !== false,
     kids: {
       on: i.kids?.on === true,
