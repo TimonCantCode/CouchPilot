@@ -133,8 +133,6 @@ main:has(.home){max-width:1040px}
 .home .lead{max-width:620px;font-size:18px}
 .home .cta{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .home .cta button,.home .cta .btn{padding:13px 22px;font-size:16px}
-.home .trust{display:flex;flex-wrap:wrap;gap:6px 16px;margin:14px 0 0;padding:0;list-style:none;color:var(--muted);font-size:13px}
-.home .trust li::before{content:"✓ ";color:var(--ok)}
 .home h2{font-size:24px;letter-spacing:-.02em;margin:64px 0 6px}
 .home h2+p{color:var(--muted);margin:0 0 18px}
 .preview{margin:44px 0 0;padding:18px 0 4px;border-radius:var(--r);background:linear-gradient(180deg,var(--panel),transparent);border:1px solid var(--line);overflow:hidden}
@@ -181,7 +179,6 @@ ${error ? `<div class="note err">${esc(error)}</div>` : ''}
 <h1>Your couch,<br>on autopilot.</h1>
 <p class="lead">Couchpilot turns Nuvio into a personal streaming home: rows built from what you actually watch, ranked by the AI of your choice, with better metadata than Cinemeta.</p>
 <div class="cta"><form method="post" action="/start"><button>Configure now</button></form><a class="btn ghost" href="#how">How it works</a></div>
-<ul class="trust"><li>Free and <a href="${REPO}" target="_blank" rel="noopener noreferrer">open source</a></li><li>No account needed</li><li>Your keys stay encrypted</li><li>Read-only access to your history</li></ul>
 
 <div class="preview" aria-hidden="true">
 ${previewRow('Top Picks for You', [350, 210, 30, 280, 160, 5, 240, 120, 320])}
