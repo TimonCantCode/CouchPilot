@@ -17,8 +17,9 @@ services:
       TRAKT_CLIENT_SECRET: ${TRAKT_CLIENT_SECRET:-}
       SIMKL_CLIENT_ID: ${SIMKL_CLIENT_ID:-}
       SUPPORT_URL: ${SUPPORT_URL:-}
-      IMPRINT_URL: ${IMPRINT_URL:-}
-      PRIVACY_URL: ${PRIVACY_URL:-}
+      IMPRINT_NAME: ${IMPRINT_NAME:-}
+      IMPRINT_ADDRESS: ${IMPRINT_ADDRESS:-}
+      IMPRINT_EMAIL: ${IMPRINT_EMAIL:-}
     secrets: [master_key]
     depends_on:
       postgres: { condition: service_healthy }

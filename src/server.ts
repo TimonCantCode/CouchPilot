@@ -13,7 +13,7 @@ import {
   configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
   defaultProfileOf, ownSettings, rateLimit, redis, rootOf, rotateToken, saveSettings, sessionUser, updateSecrets, type AiProvider, type Secrets, type Settings,
 } from './store.ts';
-import { configPage, healthPage, homePage, LANGUAGES, loginPage, REFRESH_HOURS, AI_LIMITS, TIMEZONES } from './web.ts';
+import { configPage, healthPage, homePage, imprintPage, LANGUAGES, OPERATOR, privacyPage, loginPage, REFRESH_HOURS, AI_LIMITS, TIMEZONES } from './web.ts';
 
 const PORT = Number(process.env.PORT ?? 7000);
 const PUBLIC_URL = (process.env.PUBLIC_URL ?? `http://localhost:${PORT}`).replace(/\/$/, '');
@@ -87,7 +87,7 @@ app.use(async (req, res, next) => {
   const nonce = crypto.randomBytes(16).toString('base64');
   res.locals.nonce = nonce;
   res.set({
-    'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: https://www.themoviedb.org; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`,
+    'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'same-origin', // not no-referrer: browsers would then send "Origin: null" and the CSRF check blocks
     'Cross-Origin-Opener-Policy': 'same-origin',
@@ -170,6 +170,12 @@ async function uptimeDays() {
     }),
   );
 }
+const operator = OPERATOR;
+if (operator) {
+  app.get('/imprint', (_req, res) => page(res, () => imprintPage(operator)));
+  app.get('/privacy', (_req, res) => page(res, () => privacyPage(operator)));
+}
+
 app.get('/health', async (req, res) => {
   const list = await checks();
   const ok = list.every((c) => c.ok);

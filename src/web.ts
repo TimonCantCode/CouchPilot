@@ -1,5 +1,6 @@
 import { defaultName, isOn, orderedRowIds, ROWS } from './addon.ts';
 import { EST_CALL, EST_CALLS_PER_RUN, priceFor, PROVIDERS } from './ai.ts';
+import fs from 'node:fs';
 import { mask } from './crypto.ts';
 import type { Secrets, Settings } from './store.ts';
 
@@ -103,7 +104,8 @@ details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}de
 .top{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.top .btn,.top button{padding:7px 12px;font-size:13px}
 .row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.danger{color:#ff8a8f;border-color:rgba(229,9,20,.45)}
 .foot{margin:40px 0 0;font-size:12px;color:var(--muted)}.foot p{margin:8px 0}.foot img{opacity:.8}
-.foot-links{display:flex;align-items:center;gap:14px;margin-top:10px}.foot-links a{color:var(--muted);text-decoration:none}.foot-links a:hover{color:var(--text)}
+.foot-links{display:flex;align-items:center;gap:14px;margin-top:10px}.legal h2{font-size:17px;margin-top:28px}.legal li{margin:6px 0}
+.foot-links a{color:var(--muted);text-decoration:none}.foot-links a:hover{color:var(--text)}
 .ic-link{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line)}.ic-link:hover{border-color:#55555f}
 /* Step layout: sidebar on desktop, drawer on phones, one step at a time when JS runs */
 main:has(.shell){max-width:1100px}
@@ -154,16 +156,20 @@ main:has(.home){max-width:1040px}
 .faq summary{cursor:pointer;font-weight:600}.faq p{color:var(--muted);margin:10px 0 0;font-size:14px}
 `;
 
-// Attribution required by TMDB, plus "unofficial" notice and optional legal links (IMPRINT_URL / PRIVACY_URL)
+// Attribution required by TMDB, plus "unofficial" notice and the legal pages (shown when IMPRINT_NAME is set)
 const REPO = 'https://github.com/TimonCantCode/CouchPilot';
-const legal = { imprint: process.env.IMPRINT_URL, privacy: process.env.PRIVACY_URL };
-const safeUrl = (u?: string) => (u && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : '');
-const FOOTER = `<footer class="foot"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB" width="90" height="12"></a>
+// Operator details for /imprint and /privacy, from .env only (never in git)
+export const OPERATOR = process.env.IMPRINT_NAME
+  ? { name: process.env.IMPRINT_NAME, address: process.env.IMPRINT_ADDRESS ?? '', email: process.env.IMPRINT_EMAIL ?? '' }
+  : null;
+// The logo is served from our own server so visitors' IPs never reach TMDB; text link if the file is missing
+const TMDB_LOGO = fs.existsSync(new URL('../public/tmdb.svg', import.meta.url)) ? '<img src="/tmdb.svg" alt="TMDB" width="90" height="12">' : 'TMDB';
+const FOOTER = `<footer class="foot"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">${TMDB_LOGO}</a>
 <p>This product uses the TMDB API but is not endorsed or certified by TMDB. Couchpilot is an unofficial community project and not affiliated with Nuvio, TMDB, AniList, Trakt or Simkl.</p>
 <div class="foot-links">
 <a class="ic-link" href="${REPO}" target="_blank" rel="noopener noreferrer" title="Source code on GitHub" aria-label="Source code on GitHub"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg></a>
 <a class="ic-link" href="/health" title="Status" aria-label="Status"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg></a>
-${[safeUrl(legal.imprint) && `<a href="${esc(safeUrl(legal.imprint))}" target="_blank" rel="noopener noreferrer">Imprint</a>`, safeUrl(legal.privacy) && `<a href="${esc(safeUrl(legal.privacy))}" target="_blank" rel="noopener noreferrer">Privacy</a>`].filter(Boolean).join('')}
+${OPERATOR ? '<a href="/imprint">Impressum</a><a href="/privacy">Datenschutz</a>' : ''}
 </div></footer>`;
 
 const page = (title: string, body: string, nonce = '', script = '') => `<!doctype html>
@@ -578,3 +584,48 @@ ${o.secrets.nuvio ? `<form method="post" action="/profile/sync"><div class="acti
     PAGE_JS,
   );
 }
+
+// ---------- Legal pages (German law: § 5 DDG, Art. 13 DSGVO) ----------
+
+const legalPage = (title: string, body: string) => page(title, `${brand()}<article class="legal" lang="de">${body}</article>`);
+const contact = (o: NonNullable<typeof OPERATOR>) =>
+  `<p>${esc(o.name)}<br>${o.address.split(',').map((l) => esc(l.trim())).join('<br>')}${o.email ? `<br>E-Mail: <a href="mailto:${esc(o.email)}">${esc(o.email)}</a>` : ''}</p>`;
+
+export const imprintPage = (o: NonNullable<typeof OPERATOR>) =>
+  legalPage('Impressum', `<h1>Impressum</h1><h2>Angaben gemäß § 5 DDG</h2>${contact(o)}
+<h2>Hinweis</h2><p>Couchpilot ist ein inoffizielles, nicht-kommerzielles Hobbyprojekt und steht in keiner Verbindung zu Nuvio, TMDB, AniList, Trakt oder Simkl. Couchpilot stellt keine Streams oder Videoinhalte bereit, sondern nur Listen und Beschreibungen von Filmen und Serien.</p>`);
+
+export const privacyPage = (o: NonNullable<typeof OPERATOR>) =>
+  legalPage('Datenschutz', `<h1>Datenschutzerklärung</h1>
+<h2>1. Verantwortlicher</h2>${contact(o)}
+<h2>2. Kurz gesagt</h2>
+<ul><li>Kein Tracking, keine Analyse-Tools, keine Werbung, keine Einbindung fremder Server beim Seitenaufruf.</li>
+<li>Wir fragen weder deinen Namen noch deine E-Mail-Adresse ab.</li>
+<li>Zugangsdaten und API-Keys werden verschlüsselt gespeichert.</li>
+<li>Du kannst deine Daten jederzeit exportieren und deinen Account mit allen Daten selbst löschen.</li></ul>
+<h2>3. Hosting</h2>
+<p>Couchpilot läuft auf einem Server der Hetzner Online GmbH, Industriestr. 25, 91710 Gunzenhausen, in einem Rechenzentrum in der EU. Mit Hetzner besteht ein Vertrag zur Auftragsverarbeitung (Art. 28 DSGVO).</p>
+<h2>4. Aufruf der Website und des Addons</h2>
+<p>Beim Aufruf verarbeitet der Server technisch bedingt deine IP-Adresse. Wir führen keine Zugriffsprotokolle. Die IP-Adresse wird nur kurzzeitig (höchstens eine Stunde) in einem Zähler gespeichert, um Missbrauch wie massenhafte Login-Versuche zu begrenzen. Rechtsgrundlage ist unser berechtigtes Interesse an einem sicheren Betrieb (Art. 6 Abs. 1 lit. f DSGVO).</p>
+<h2>5. Dein Account</h2>
+<p>Für deinen Account speichern wir: eine zufällige Account-ID, optional ein Passwort (nur als Hash), einen geheimen Schlüssel für deine Install-URL (verschlüsselt), deine Einstellungen und Profilnamen sowie den Zeitpunkt der letzten Nutzung. Daraus berechnete Empfehlungslisten und eine Liste bereits gesehener Titel (höchstens 30 Tage) werden zwischengespeichert. Rechtsgrundlage ist die Bereitstellung des Dienstes, den du nutzt (Art. 6 Abs. 1 lit. b DSGVO).</p>
+<h2>6. Cookie</h2>
+<p>Wir setzen nur einen technisch notwendigen Cookie, der dich nach dem Login angemeldet hält (höchstens 30 Tage). Er dient keinem Tracking. Rechtsgrundlage ist § 25 Abs. 2 Nr. 2 TDDDG.</p>
+<h2>7. Dienste, die du selbst verbindest</h2>
+<p>Nur wenn du sie in den Einstellungen einträgst, ruft der Couchpilot-Server in deinem Auftrag folgende Dienste auf. Dabei wird nicht deine IP-Adresse übertragen, sondern die des Servers. Es gelten zusätzlich die Datenschutzbestimmungen des jeweiligen Anbieters.</p>
+<ul><li><b>Nuvio</b>: Mit deinem Login holen wir deine Profile, deinen Verlauf und deinen Fortschritt. Dein Passwort speichern wir nicht, nur einen verschlüsselten Zugangs-Token.</li>
+<li><b>Trakt, Simkl</b>: Über die Anmeldung beim jeweiligen Dienst holen wir deinen Verlauf und deine Bewertungen. Die Zugangs-Tokens werden verschlüsselt gespeichert.</li>
+<li><b>AniList</b>: Mit deinem öffentlichen Benutzernamen holen wir deine öffentliche Anime-Liste.</li>
+<li><b>TMDB</b> (The Movie Database): Mit deinem API-Key holen wir Infos zu Filmen und Serien. Dabei werden Titel-IDs übertragen, keine Angaben zu deiner Person.</li>
+<li><b>KI-Anbieter</b> (z. B. OpenAI, Anthropic, Google, OpenRouter oder dein eigener Ollama-Server): Mit deinem API-Key schicken wir Titel aus deinem Verlauf, eine Auswahl möglicher Empfehlungen, deine eingetragenen Wünsche und Suchanfragen. Pro Tag gibt es ein Limit, das du einstellen kannst.</li></ul>
+<p>Einige dieser Anbieter sitzen in den USA. Eine Übermittlung dorthin findet nur statt, weil du den Dienst selbst einträgst. Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO, bei Übermittlungen in die USA zusätzlich das EU-US Data Privacy Framework, soweit der Anbieter zertifiziert ist, oder Art. 49 Abs. 1 lit. b DSGVO.</p>
+<h2>8. Externe Links</h2>
+<p>Links zu GitHub, Ko-fi, Discord oder anderen Seiten sind normale Links. Erst wenn du sie anklickst, gelten die Datenschutzbestimmungen der jeweiligen Seite.</p>
+<h2>9. Speicherdauer</h2>
+<ul><li>Account-Daten: bis du deinen Account oder ein Profil löschst. Die Löschung erfolgt sofort und vollständig.</li>
+<li>Accounts ohne Passwort, die nie in Nuvio benutzt wurden: automatisch nach 7 Tagen.</li>
+<li>Datensicherungen: werden nach 7 Tagen überschrieben.</li>
+<li>Zähler für den Missbrauchsschutz: höchstens eine Stunde. KI-Nutzungsstatistik: 35 Tage.</li></ul>
+<h2>10. Deine Rechte</h2>
+<p>Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch (Art. 15 bis 21 DSGVO). Export und Löschung kannst du direkt in den Einstellungen erledigen, für alles andere schreib uns. Außerdem kannst du dich bei einer Datenschutz-Aufsichtsbehörde beschweren.</p>
+<p class="muted small">Eine automatisierte Entscheidung mit rechtlicher Wirkung (Art. 22 DSGVO) findet nicht statt. Stand: Oktober 2026.</p>`);
