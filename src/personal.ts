@@ -187,9 +187,18 @@ const isDe = (ctx: JobCtx) => ctx.lang.startsWith('de');
 // User text inside <data> tags must not be able to close the tag
 const noTags = (t: string) => t.replace(/[<>]/g, ' ');
 
+// Calendar day in the user's timezone: the AI limits reset at their midnight, not 24 h after the first call
+const userDay = (tz: string) => {
+  try {
+    return new Date().toLocaleDateString('sv', { timeZone: tz });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+};
+
 // AI call with a daily limit per user
 async function ai(ctx: JobCtx, system: string, user: string): Promise<string> {
-  if (!(await rateLimit(`ai:${ctx.userId}`, AI_CALLS_PER_DAY, 86400))) throw new Error('daily AI limit reached');
+  if (!(await rateLimit(`ai:${ctx.userId}:${userDay(ctx.cfg.settings.timezone)}`, AI_CALLS_PER_DAY, 2 * 86400))) throw new Error('daily AI limit reached');
   const { text, usage } = await complete(ctx.cfg.settings.ai, ctx.cfg.secrets.aiKey, system, user);
   await recordUsage(ctx.userId, usage);
   return text;
@@ -208,7 +217,7 @@ export async function aiSearch(cfg: UserConfig, q: string, type: Type): Promise<
   if (!s.aiSearch || !s.ai.provider || !secrets.tmdbKey) return [];
   // cached() also merges the parallel movie + series requests into one AI call
   const items = cached(`aisearch:${cfg.userId}:${q.toLowerCase()}`, 7 * 86400, async () => {
-    if (!(await rateLimit(`aisearch:${cfg.userId}`, AI_SEARCHES_PER_DAY, 86400))) throw new Error('daily AI search limit reached');
+    if (!(await rateLimit(`aisearch:${cfg.userId}:${userDay(s.timezone)}`, AI_SEARCHES_PER_DAY, 2 * 86400))) throw new Error('daily AI search limit reached');
     const { text, usage } = await complete(
       s.ai,
       secrets.aiKey,
