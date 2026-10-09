@@ -105,7 +105,7 @@ details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}de
 .row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.danger{color:#ff8a8f;border-color:rgba(229,9,20,.45)}
 .foot{margin:40px 0 0;font-size:12px;color:var(--muted)}.foot p{margin:8px 0}.foot img{opacity:.8}
 .foot-links{display:flex;align-items:center;gap:14px;margin-top:10px}.legal h2{font-size:17px;margin-top:28px}.legal li{margin:6px 0}
-.foot-links a{color:var(--muted);text-decoration:none}.foot-links a:hover{color:var(--text)}
+.foot-links a{color:var(--muted);text-decoration:none}.foot-links .push{margin-left:auto}.foot-links a:hover{color:var(--text)}
 .ic-link{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line)}.ic-link:hover{border-color:#55555f}
 /* Step layout: sidebar on desktop, drawer on phones, one step at a time when JS runs */
 main:has(.shell){max-width:1100px}
@@ -169,7 +169,7 @@ const FOOTER = `<footer class="foot"><a href="https://www.themoviedb.org" target
 <div class="foot-links">
 <a class="ic-link" href="${REPO}" target="_blank" rel="noopener noreferrer" title="Source code on GitHub" aria-label="Source code on GitHub"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg></a>
 <a class="ic-link" href="/health" title="Status" aria-label="Status"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg></a>
-${OPERATOR ? '<a href="/imprint">Impressum</a><a href="/privacy">Datenschutz</a>' : ''}
+${OPERATOR ? '<a class="push" href="/imprint">Impressum</a><a href="/privacy">Datenschutz</a>' : ''}
 </div></footer>`;
 
 const page = (title: string, body: string, nonce = '', script = '') => `<!doctype html>
