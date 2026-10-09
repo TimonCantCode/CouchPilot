@@ -280,8 +280,13 @@ const duration = (s: number) => {
   return d ? `${d}d ${h}h ${m}m` : h ? `${h}h ${m}m` : `${m}m ${Math.floor(s % 60)}s`;
 };
 
+// Counts the uptime up every second in the browser (same format as duration())
+const UPTIME_TICK = `const u=document.getElementById('up');const t0=+u.dataset.start;
+setInterval(()=>{const s=Math.max(0,Math.floor((Date.now()-t0)/1000)),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
+u.textContent=d?d+'d '+h+'h '+m+'m':h?h+'h '+m+'m':m+'m '+(s%60)+'s';},1000);`;
+
 // Status page: live checks plus a 30-day uptime history (one bar per day)
-export const healthPage = (h: Health) => {
+export const healthPage = (h: Health, nonce = '') => {
   const known = h.days.filter((d) => d.pct !== null);
   const avg = known.length ? known.reduce((a, d) => a + d.pct!, 0) / known.length : null;
   const sum = (f: (d: Health['week'][number]) => number) => h.week.reduce((a, d) => a + f(d), 0);
@@ -293,7 +298,7 @@ export const healthPage = (h: Health) => {
     `${brand('<a class="btn ghost" href="/">Home</a>')}
 <div class="note ${h.ok ? 'ok' : 'err'}" style="font-size:18px"><b>${h.ok ? 'All systems operational' : 'Problem detected'}</b></div>
 <div class="stats">
-<div class="sec"><span class="muted small">Uptime since restart</span><b>${duration(h.uptimeSec)}</b><span class="muted small">since ${esc(h.startedAt.slice(0, 16).replace('T', ' '))} UTC</span></div>
+<div class="sec"><span class="muted small">Uptime since restart</span><b id="up" data-start="${Date.parse(h.startedAt)}">${duration(h.uptimeSec)}</b><span class="muted small">since ${esc(h.startedAt.slice(0, 16).replace('T', ' '))} UTC</span></div>
 <div class="sec"><span class="muted small">Last 30 days</span><b>${avg === null ? '–' : `${avg.toFixed(2)} %`}</b><span class="muted small">available</span></div>
 <div class="sec"><span class="muted small">Background jobs</span><b>${h.jobsRunning}</b><span class="muted small">running now</span></div>
 ${h.users ? `<div class="sec"><span class="muted small">Users</span><b>${h.users.profiles}</b><span class="muted small">profile${h.users.profiles === 1 ? '' : 's'} in ${h.users.accounts} account${h.users.accounts === 1 ? '' : 's'} · ${h.users.active} active in 30 days</span></div>` : ''}
@@ -311,6 +316,8 @@ ${h.checks.map((c) => `<div class="conn" style="margin-top:8px"><b><span class="
 <div class="wk-sum"><div><b>${sum((d) => d.requests).toLocaleString('en')}</b><span>addon requests</span></div><div><b>${sum((d) => d.jobsOk)}</b><span>recomputes</span></div><div${sum((d) => d.jobsErr) ? ' class="bad"' : ''}><b>${sum((d) => d.jobsErr)}</b><span>failed</span></div></div>
 <div class="wk">${h.week.map((d) => `<div class="wk-d" title="${esc(d.date)}: ${d.requests} requests, ${d.jobsOk} recomputes, ${d.jobsErr} failed"><div class="wk-t"><span class="wk-n">${d.requests ? compact(d.requests) : ''}</span><span class="wk-b" style="height:${Math.max(2, Math.round((d.requests / maxReq) * 100))}px"></span></div><span class="wk-l">${new Date(d.date + 'T12:00:00Z').toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</span><span class="wk-e">${d.jobsErr ? `⚠ ${d.jobsErr}` : ''}</span></div>`).join('')}</div></section>
 `,
+    nonce,
+    UPTIME_TICK,
   );
 };
 

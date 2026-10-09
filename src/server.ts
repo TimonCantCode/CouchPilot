@@ -222,7 +222,7 @@ app.get('/health', async (req, res) => {
     days,
   };
   res.status(ok ? 200 : 503);
-  if (req.accepts(['json', 'html']) === 'html') return void res.send(healthPage(h));
+  if (req.accepts(['json', 'html']) === 'html') return void res.send(healthPage(h, res.locals.nonce));
   res.json(h);
 });
 app.get('/login', (_req, res) => page(res, () => loginPage(undefined, SUPPORT_URL)));
