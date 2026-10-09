@@ -94,6 +94,9 @@ export function startScheduler() {
   setInterval(tick, 10 * 60_000).unref();
 }
 
+// The profile isn't set up enough to compute anything (no TMDB key, no history yet): shown to the user, not counted as a failure
+class SetupMissing extends Error {}
+
 export async function runJob(userId: string) {
   if (!(await redis.set(`pers:lock:${userId}`, '1', 'EX', 600, 'NX'))) return;
   await redis.del(`pers:queued:${userId}`);
@@ -111,7 +114,7 @@ export async function runJob(userId: string) {
     ]);
     void count('job-ok');
   } catch (err) {
-    void count('job-err');
+    if (!(err instanceof SetupMissing)) void count('job-err'); // a profile without history or keys is not a Couchpilot failure
     console.error(`job ${userId}:`, msg(err));
     await status(`error: ${msg(err)}`);
   } finally {
@@ -126,19 +129,19 @@ async function work(userId: string, progress: (s: string) => Promise<unknown>, s
     await progress('loading settings');
     const cfg = await configByUser(userId);
     const tmdbKey = cfg.secrets.tmdbKey;
-    if (!tmdbKey) throw new Error('No TMDB key set');
+    if (!tmdbKey) throw new SetupMissing('No TMDB key set');
 
     const sources: Promise<Watch[]>[] = [];
     if (cfg.nuvioOwner) sources.push(nuvioHistory(cfg.nuvioOwner, cfg.settings.nuvioProfile));
     if (cfg.secrets.trakt) sources.push(traktHistory(userId, cfg.secrets));
     if (cfg.secrets.simkl) sources.push(simklHistory(cfg.secrets));
     if (cfg.settings.anilistUser) sources.push(anilistUserHistory(cfg.settings.anilistUser, animeCatalogId));
-    if (!sources.length) throw new Error('No watch history source connected');
+    if (!sources.length) throw new SetupMissing('No watch history source connected');
     await progress('reading watch history');
     const settled = await Promise.allSettled(sources);
     const problems = settled.flatMap((r) => (r.status === 'rejected' ? [msg(r.reason)] : []));
     const history = mergeHistory(settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])));
-    if (!history.length) throw new Error(problems[0] ?? 'Watch history is empty');
+    if (!history.length) throw problems[0] ? new Error(problems[0]) : new SetupMissing('Watch history is empty');
 
     const ctx: JobCtx = { userId, cfg, tmdbKey, lang: cfg.settings.language, ttl: cfg.settings.refreshHours * 3600 * 4, problems };
     const seen = [...new Set(history.flatMap((w) => [w.id, isAnimeId(w.id) ? animeCatalogId(anilistIdFor(w.id) ?? 0) : null]).filter((x): x is string => !!x))];
