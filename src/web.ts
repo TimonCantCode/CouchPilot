@@ -90,7 +90,7 @@ details.more{margin-top:12px;border:1px dashed var(--line);border-radius:12px;pa
 details.more>summary{cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 0;font-weight:600;list-style:none}
 details.more>summary::-webkit-details-marker{display:none}details.more>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
 details.more[open]>summary::before{transform:rotate(90deg)}details.more>summary .small{margin-left:auto;font-weight:400}
-details.more .rows{padding-bottom:10px}#rowmore .handle,#rowmore .mv{visibility:hidden}
+details.more .rows{padding-bottom:6px}.mgroup h4{margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}.mgroup:not(:has(.row)){display:none}#rowmore .handle,#rowmore .mv{visibility:hidden}
 form:not(:has([name=kidsOn]:checked)) .kids-only{display:none}
 .chips{display:flex;flex-wrap:wrap;gap:0 18px}.chips .check{margin-top:8px}
 .stats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}.stats .sec{margin:0;display:flex;flex-direction:column;gap:2px}.stats b{font-size:26px;letter-spacing:-.02em}
@@ -312,7 +312,7 @@ list.addEventListener('dragend',()=>{if(drag){drag.classList.remove('dragging');
 // Switching a row on moves it into your rows, switching it off folds it away under "More rows"
 const more=document.getElementById('rowmore'),mc=document.getElementById('morecount');
 document.getElementById('rows').addEventListener('change',e=>{const sw=e.target;if(!sw.matches||!sw.matches('.sw[name=rows]'))return;const r=sw.closest('.row');
-if(sw.checked&&r.parentElement===more)list.appendChild(r);else if(!sw.checked&&r.parentElement===list)more.prepend(r);mc.textContent=more.children.length;});
+if(sw.checked&&r.parentElement!==list)list.appendChild(r);else if(!sw.checked&&r.parentElement===list)more.querySelector('[data-g="'+r.dataset.g+'"] .rows').prepend(r);mc.textContent=more.querySelectorAll('.row').length;});
 list.addEventListener('dragover',e=>{if(!drag)return;e.preventDefault();const r=e.target.closest('.row');if(!r||r===drag)return;
 const b=r.getBoundingClientRect();list.insertBefore(drag,e.clientY<b.top+b.height/2?r:r.nextSibling);});
 const jl=document.getElementById('jobs');
@@ -330,6 +330,15 @@ imf&&imf.addEventListener('change',async()=>{const f=imf.files[0];if(!f)return;i
 document.getElementById('importdata').value=await f.text();if(confirm('Replace this profile’s settings with the imported ones?'))document.getElementById('importform').submit();imf.value='';});
 document.querySelectorAll('form[data-confirm]').forEach(f=>f.addEventListener('submit',e=>{if(!confirm(f.dataset.confirm))e.preventDefault();}));`;
 
+// "More rows" is split into these sections (empty ones are hidden by CSS)
+const MORE_GROUPS: [string, string][] = [
+  ['For You (watch history + AI)', '★ For you'],
+  ['Mixed (movies + series)', 'Movies & series mixed'],
+  ['Genres', 'Genres'],
+  ['Movies', 'Movies'],
+  ['Series', 'Series'],
+  ['Anime', 'Anime'],
+];
 const GROUP_PILL: Record<string, string> = { Movies: 'Movie', Series: 'Series', Anime: 'Anime' };
 
 export function configPage(o: {
@@ -365,7 +374,7 @@ export function configPage(o: {
       return rowHtmlBase(id, r, type, r.type === 'mixed' ? 'Mix' : r.group === 'Anime' ? (r.type === 'movie' ? 'Anime movie' : 'Anime') : type);
   };
   const rowHtmlBase = (id: string, r: (typeof ROWS)[string], type: string, pill: string) => {
-      return `<div class="row"><span class="handle" draggable="true" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
+      return `<div class="row" data-g="${esc(r.group)}"><span class="handle" draggable="true" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
 <input class="sw" type="checkbox" name="rows" value="${esc(id)}" aria-label="Show ${esc(r.name)}"${isOn(id, s) ? ' checked' : ''}${id.startsWith('custom-') ? ' disabled title="On when the row has a prompt (below)"' : ''}>
 <input type="text" name="name_${esc(id)}" maxlength="60" placeholder="${esc(defaultName(id, s.language))}" value="${esc(s.names[id] ?? defaultName(id, s.language))}" aria-label="Name for ${esc(r.name)}" title="${esc(GROUP_PILL[r.group] ?? r.group)} · ${type}">
 <span class="pill g${r.personal ? ' fy' : ''}" title="${esc(r.group)}">${r.personal ? '★ ' : ''}${esc(pill)}</span>
@@ -484,7 +493,7 @@ ${scopeNote}
 <p class="sub">Toggle = show, ★ = from your watch history. Reorder with the arrows or drag the handle. Click a name to rename it, empty = default name. “Mix” shows movies and series in one row.</p>
 <div class="rows" id="rowlist">${activeRows.map(rowHtml).join('')}</div>
 <details class="more"><summary><span>More rows</span> <span class="pill" id="morecount">${moreRows.length}</span><span class="small muted">Switch one on to add it to your rows</span></summary>
-<div class="rows" id="rowmore">${moreRows.map(rowHtml).join('')}</div></details>
+<div id="rowmore">${MORE_GROUPS.map(([g, label]) => `<div class="mgroup" data-g="${esc(g)}"><h4>${label}</h4><div class="rows">${moreRows.filter((id) => ROWS[id].group === g).map(rowHtml).join('')}</div></div>`).join('')}</div></details>
 ${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for this profile’s “For You” rows<select name="nuvioProfile">${s.nuvioProfiles.map((p) => `<option value="${p.index}"${p.index === s.nuvioProfile ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
 <label class="check"><input class="sw" type="checkbox" name="hideWatched" value="1"${s.hideWatched ? ' checked' : ''}>Hide titles this profile has already watched in Trending, Popular, New and the other standard rows</label>
 <label class="check"><input class="sw" type="checkbox" name="shuffle" value="1"${s.shuffle ? ' checked' : ''}>Mix up the order of your personal and genre rows every few hours, so the home screen feels fresh (your best picks stay first)</label>
