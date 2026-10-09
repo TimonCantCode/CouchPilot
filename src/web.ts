@@ -105,7 +105,7 @@ details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}de
 .row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.danger{color:#ff8a8f;border-color:rgba(229,9,20,.45)}
 .foot{margin:40px 0 0;font-size:12px;color:var(--muted)}.foot p{margin:8px 0}.foot img{opacity:.8}
 .foot-links{display:flex;align-items:center;gap:14px;margin-top:10px}.legal h2{font-size:17px;margin-top:28px}.legal li{margin:6px 0}
-.foot-links a{color:var(--muted);text-decoration:none}.foot-links .push{margin-left:auto}.foot-links a:hover{color:var(--text)}
+.foot-links a{color:var(--muted);text-decoration:none}.foot-links .push{margin-left:auto}.foot img.tmdb{height:14px;width:auto;display:block}.foot-links a:hover{color:var(--text)}
 .ic-link{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line)}.ic-link:hover{border-color:#55555f}
 /* Step layout: sidebar on desktop, drawer on phones, one step at a time when JS runs */
 main:has(.shell){max-width:1100px}
@@ -163,7 +163,7 @@ export const OPERATOR = process.env.IMPRINT_NAME
   ? { name: process.env.IMPRINT_NAME, address: process.env.IMPRINT_ADDRESS ?? '', email: process.env.IMPRINT_EMAIL ?? '' }
   : null;
 // The logo is served from our own server so visitors' IPs never reach TMDB; text link if the file is missing
-const TMDB_LOGO = fs.existsSync(new URL('../public/tmdb.svg', import.meta.url)) ? '<img src="/tmdb.svg" alt="TMDB" width="90" height="12">' : 'TMDB';
+const TMDB_LOGO = fs.existsSync(new URL('../public/tmdb.svg', import.meta.url)) ? '<img class="tmdb" src="/tmdb.svg" alt="TMDB">' : 'TMDB';
 const FOOTER = `<footer class="foot"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">${TMDB_LOGO}</a>
 <p>This product uses the TMDB API but is not endorsed or certified by TMDB. Couchpilot is an unofficial community project and not affiliated with Nuvio, TMDB, AniList, Trakt or Simkl.</p>
 <div class="foot-links">
