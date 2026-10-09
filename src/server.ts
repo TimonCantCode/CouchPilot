@@ -10,7 +10,7 @@ import { aiUsage, jobStatus, markQueued, runJob, startScheduler } from './person
 import { animeMapSize, checkTmdbKey, loadAnimeMap, type Type } from './sources.ts';
 import { apply, changes } from './diff.ts';
 import {
-  cached, configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
+  cached, count, counts, configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
   defaultProfileOf, ownSettings, rateLimit, redis, rootOf, rotateToken, saveSettings, sessionUser, updateSecrets, type AiProvider, type Secrets, type Settings,
 } from './store.ts';
 import { configPage, healthPage, homePage, imprintPage, LANGUAGES, OPERATOR, privacyPage, loginPage, REFRESH_HOURS, AI_LIMITS, TIMEZONES } from './web.ts';
@@ -53,6 +53,7 @@ async function addonGuard(req: Request, res: Response, next: NextFunction) {
   const token = (req.params as any)[0];
   if (!(await rateLimit(`addon:${ip(req)}`, 300, 60))) return tooMany(res);
   if (token && !(await rateLimit(`addontok:${token.slice(0, 16)}`, 600, 60))) return tooMany(res);
+  void count('req');
   next();
 }
 
@@ -158,6 +159,17 @@ const checks = async () => {
   const [pg, rd] = await Promise.all([timed(() => db.query('select 1')), timed(() => redis.ping())]);
   return [{ name: 'Database (Postgres)', ...pg }, { name: 'Cache (Redis)', ...rd }];
 };
+// Services Couchpilot depends on. Any HTTP answer counts as reachable (no keys needed); cached so /health can't hammer them
+const EXTERNAL: [string, string][] = [
+  ['TMDB', 'https://api.themoviedb.org/3/configuration'],
+  ['Cinemeta', 'https://v3-cinemeta.strem.io/manifest.json'],
+  ['AniList', 'https://graphql.anilist.co'],
+  ['Nuvio Sync', 'https://api.nuvio.tv'],
+];
+const externalChecks = () =>
+  cached('health:ext', 120, () =>
+    Promise.all(EXTERNAL.map(async ([name, url]) => ({ name, ...(await timed(async () => { if ((await fetch(url, { signal: AbortSignal.timeout(3000) })).status >= 500) throw new Error('5xx'); })) }))),
+  );
 const dayKey = (d: Date) => `uptime:${d.toISOString().slice(0, 10)}`;
 async function heartbeat() {
   try {
@@ -193,15 +205,18 @@ if (operator) {
 app.get('/health', async (req, res) => {
   const list = await checks();
   const ok = list.every((c) => c.ok);
-  const [locks, days] = ok ? await Promise.all([redis.keys('pers:lock:*'), uptimeDays()]) : [[], []];
+  const [locks, days, external, requests, jobsOk, jobsErr] = ok
+    ? await Promise.all([redis.keys('pers:lock:*'), uptimeDays(), externalChecks(), counts('req'), counts('job-ok'), counts('job-err')])
+    : [[], [], [], [], [], []];
   const h = {
     ok,
     version: VERSION,
     uptimeSec: Math.round((Date.now() - STARTED) / 1000),
     startedAt: new Date(STARTED).toISOString(),
-    memoryMb: Math.round(process.memoryUsage().rss / 1e6),
     jobsRunning: locks.length,
     users: ok ? await userStats().catch(() => null) : null,
+    external,
+    week: requests.map((r, i) => ({ date: r.date, requests: r.n, jobsOk: jobsOk[i]?.n ?? 0, jobsErr: jobsErr[i]?.n ?? 0 })),
     animeTitles: animeMapSize(),
     checks: list,
     days,

@@ -164,6 +164,8 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     const html = await (await fetch(B + '/health', { headers: { accept: 'text/html' } })).text();
     assert.match(html, /All systems operational/);
     assert.equal(typeof j.users.profiles, 'number', 'user numbers in health');
+    assert.equal(j.external.length, 4, 'external services checked');
+    assert.equal(j.week.length, 7, '7 days of stats');
   });
 
   test('set up: import settings, connect Nuvio, profiles come from Nuvio', async () => {

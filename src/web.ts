@@ -131,6 +131,7 @@ details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}de
 .row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.danger{color:#ff8a8f;border-color:rgba(229,9,20,.45)}
 .foot{margin:40px 0 0;font-size:12px;color:var(--muted)}.foot p{margin:8px 0}.foot img{opacity:.8}
 .foot-links{display:flex;align-items:center;gap:14px;margin-top:10px}.legal h2{font-size:17px;margin-top:28px}.legal li{margin:6px 0}
+.week{width:100%;border-collapse:collapse;font-size:14px}.week th,.week td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line)}.week th:first-child,.week td:first-child{text-align:left}.week th{color:var(--muted);font-weight:600;font-size:12px}.week .bad{color:var(--accent);font-weight:700}
 .users{margin:14px 0 0;color:var(--muted);font-size:14px}.users b{color:var(--text)}
 .foot-links a{color:var(--muted);text-decoration:none}.foot-links .push{margin-left:auto}.foot img.tmdb{height:14px;width:auto;display:block}.foot-links a:hover{color:var(--text)}
 .ic-link{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line)}.ic-link:hover{border-color:#55555f}
@@ -265,8 +266,10 @@ ${previewRow('Complete the Saga', [270, 300, 230, 330, 250, 290, 210, 310, 260])
   );
 
 export type Health = {
-  ok: boolean; version: string; uptimeSec: number; startedAt: string; memoryMb: number; jobsRunning: number; animeTitles: number;
+  ok: boolean; version: string; uptimeSec: number; startedAt: string; jobsRunning: number; animeTitles: number;
   users: { accounts: number; profiles: number; active: number } | null;
+  external: { name: string; ok: boolean; ms: number | null }[];
+  week: { date: string; requests: number; jobsOk: number; jobsErr: number }[];
   checks: { name: string; ok: boolean; ms: number | null }[];
   days: { date: string; pct: number | null }[];
 };
@@ -288,14 +291,20 @@ export const healthPage = (h: Health) => {
 <div class="sec"><span class="muted small">Uptime since restart</span><b>${duration(h.uptimeSec)}</b><span class="muted small">since ${esc(h.startedAt.slice(0, 16).replace('T', ' '))} UTC</span></div>
 <div class="sec"><span class="muted small">Last 30 days</span><b>${avg === null ? '–' : `${avg.toFixed(2)} %`}</b><span class="muted small">available</span></div>
 <div class="sec"><span class="muted small">Background jobs</span><b>${h.jobsRunning}</b><span class="muted small">running now</span></div>
-${h.users ? `<div class="sec"><span class="muted small">Users</span><b>${h.users.profiles}</b><span class="muted small">profiles in ${h.users.accounts} accounts · ${h.users.active} active in 30 days</span></div>` : ''}
+${h.users ? `<div class="sec"><span class="muted small">Users</span><b>${h.users.profiles}</b><span class="muted small">profile${h.users.profiles === 1 ? '' : 's'} in ${h.users.accounts} account${h.users.accounts === 1 ? '' : 's'} · ${h.users.active} active in 30 days</span></div>` : ''}
 </div>
 <section class="sec"><h3 style="margin-top:0">Uptime, last 30 days</h3>
 <div class="bars">${h.days.map((d) => `<span class="b ${bar(d.pct)}" title="${esc(d.date)}: ${d.pct === null ? 'no data' : `${d.pct.toFixed(2)} %`}"></span>`).join('')}</div>
 <div class="small muted bars-legend"><span>30 days ago</span><span>today</span></div></section>
+<section class="sec"><h3 style="margin-top:0">Last 7 days</h3>
+<table class="week"><tr><th>Day</th><th>Addon requests</th><th>Recomputes</th><th>Failed</th></tr>
+${h.week.map((d) => `<tr><td>${esc(d.date.slice(5))}</td><td>${d.requests.toLocaleString('en')}</td><td>${d.jobsOk}</td><td${d.jobsErr ? ' class="bad"' : ''}>${d.jobsErr}</td></tr>`).join('')}</table></section>
+<section class="sec"><h3 style="margin-top:0">External services</h3>
+<p class="small muted" style="margin:0">If one of these is down, some rows or metadata may be missing for a while. Couchpilot keeps serving what it has cached.</p>
+${h.external.map((c) => `<div class="conn" style="margin-top:8px"><b><span class="dot${c.ok ? ' on' : ''}"></span>${esc(c.name)}</b><span class="small muted">${c.ok ? `${c.ms} ms` : 'not reachable'}</span></div>`).join('')}</section>
 <section class="sec"><h3 style="margin-top:0">Checks</h3>
 ${h.checks.map((c) => `<div class="conn" style="margin-top:8px"><b><span class="dot${c.ok ? ' on' : ''}"></span>${esc(c.name)}</b><span class="small muted">${c.ok ? `${c.ms} ms` : 'not reachable'}</span></div>`).join('')}
-<p class="small muted" style="margin:14px 0 0">Version ${esc(h.version)} · ${h.memoryMb} MB memory · ${h.animeTitles.toLocaleString('en')} anime titles mapped · <code>curl …/health</code> returns the same as JSON</p></section>`,
+<p class="small muted" style="margin:14px 0 0">Version ${esc(h.version)} · ${h.animeTitles.toLocaleString('en')} anime titles mapped · <code>curl …/health</code> returns the same as JSON</p></section>`,
   );
 };
 

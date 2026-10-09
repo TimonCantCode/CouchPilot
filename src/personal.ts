@@ -4,7 +4,7 @@ import {
   animeCatalogId, animeRecommendations, anilistIdFor, cinemetaMeta, discoverPath, genreMap, isAnimeId, recommendationsPath,
   tmdbCollection, tmdbCredits, tmdbDetails, tmdbIdFor, tmdbPersonMovies, tmdbResults, tmdbSearch, toMetas, type Meta, type Type,
 } from './sources.ts';
-import { cached, configByUser, db, rateLimit, redis, type UserConfig } from './store.ts';
+import { cached, configByUser, db, rateLimit, redis, type UserConfig, count } from './store.ts';
 
 // Personal rows: a background job computes them, the app only reads the finished result from Redis.
 
@@ -109,7 +109,9 @@ export async function runJob(userId: string) {
       work(userId, progress, status),
       new Promise((_, reject) => (timer = setTimeout(() => reject(new Error('timed out after 5 minutes')), JOB_TIMEOUT_MS))),
     ]);
+    void count('job-ok');
   } catch (err) {
+    void count('job-err');
     console.error(`job ${userId}:`, msg(err));
     await status(`error: ${msg(err)}`);
   } finally {

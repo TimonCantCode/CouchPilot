@@ -38,6 +38,15 @@ export async function rateLimit(key: string, max: number, windowSec: number): Pr
   return n <= max;
 }
 
+// Daily counters for the status page (requests, recomputes), kept 8 days
+const statDay = (d = new Date()) => d.toISOString().slice(0, 10);
+export const count = (name: string) => redis.multi().incr(`stats:${name}:${statDay()}`).expire(`stats:${name}:${statDay()}`, 8 * 86400).exec().catch(() => {});
+export async function counts(name: string, days = 7): Promise<{ date: string; n: number }[]> {
+  const dates = Array.from({ length: days }, (_, i) => statDay(new Date(Date.now() - (days - 1 - i) * 86400_000)));
+  const vals = await redis.mget(dates.map((d) => `stats:${name}:${d}`));
+  return dates.map((date, i) => ({ date, n: Number(vals[i] ?? 0) }));
+}
+
 // ---------- Sessions (cookie only holds a random value, Redis only knows its hash) ----------
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
