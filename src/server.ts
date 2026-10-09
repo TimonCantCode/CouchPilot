@@ -805,9 +805,13 @@ app.post('/account/delete', auth, async (req, res) => {
   await login(res, root, '/configure?ok=profile');
 });
 
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(err.message);
-  res.status(500).send('Internal error');
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  // Path without the install token, so logs never contain a usable URL
+  console.error(`error ${req.method} ${req.path.replace(/^\/[\w-]{43}\//, '/<token>/')}: ${err.message}`);
+  if (res.headersSent) return;
+  // Addon requests get JSON (Nuvio shows an empty row instead of failing), pages get a short message
+  if (/\.json$/.test(req.path)) return void res.status(500).json({ error: 'temporary error, please try again' });
+  res.status(500).send('Something went wrong, please try again in a moment.');
 });
 
 // ---------- Startup + background tasks ----------

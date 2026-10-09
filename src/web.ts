@@ -302,7 +302,7 @@ export const healthPage = (h: Health, nonce = '') => {
 <div class="sec"><span class="muted small">Uptime since restart</span><b id="up" data-start="${Date.parse(h.startedAt)}">${duration(h.uptimeSec)}</b><span class="muted small">since ${esc(h.startedAt.slice(0, 16).replace('T', ' '))} UTC</span></div>
 <div class="sec"><span class="muted small">Last 30 days</span><b>${avg === null ? '–' : `${avg.toFixed(2)} %`}</b><span class="muted small">available</span></div>
 <div class="sec"><span class="muted small">Background jobs</span><b>${h.jobsRunning}</b><span class="muted small">running now</span></div>
-${h.users ? `<div class="sec"><span class="muted small">Users</span><b>${h.users.profiles}</b><span class="muted small">profile${h.users.profiles === 1 ? '' : 's'} in ${h.users.accounts} account${h.users.accounts === 1 ? '' : 's'} · ${h.users.active} active in 30 days</span></div>` : ''}
+${h.users ? `<div class="sec"><span class="muted small">Users</span><b>${h.users.profiles.toLocaleString('en')}</b><span class="muted small">using Couchpilot</span></div>` : ''}
 </div>
 <section class="sec"><h3 style="margin-top:0">Uptime, last 30 days</h3>
 <div class="bars">${h.days.map((d) => `<span class="b ${bar(d.pct)}" title="${esc(d.date)}: ${d.pct === null ? 'no data' : `${d.pct.toFixed(2)} %`}"></span>`).join('')}</div>
@@ -312,7 +312,7 @@ ${h.users ? `<div class="sec"><span class="muted small">Users</span><b>${h.users
 ${h.external.map((c) => `<div class="conn" style="margin-top:8px"><b><span class="dot${c.ok ? ' on' : ''}"></span>${esc(c.name)}</b><span class="small muted">${c.ok ? `${c.ms} ms` : 'not reachable'}</span></div>`).join('')}</section>
 <section class="sec"><h3 style="margin-top:0">Checks</h3>
 ${h.checks.map((c) => `<div class="conn" style="margin-top:8px"><b><span class="dot${c.ok ? ' on' : ''}"></span>${esc(c.name)}</b><span class="small muted">${c.ok ? `${c.ms} ms` : 'not reachable'}</span></div>`).join('')}
-<p class="small muted" style="margin:14px 0 0">Version ${esc(h.version)} · ${h.animeTitles.toLocaleString('en')} anime titles mapped · <code>curl …/health</code> returns the same as JSON</p></section>
+<p class="small muted" style="margin:14px 0 0">Version ${esc(h.version)}</p></section>
 <section class="sec"><h3 style="margin-top:0">Last 7 days</h3>
 <div class="wk-sum"><div><b>${sum((d) => d.requests).toLocaleString('en')}</b><span>addon requests</span></div><div><b>${sum((d) => d.jobsOk)}</b><span>recomputes</span></div><div${sum((d) => d.jobsErr) ? ' class="bad"' : ''}><b>${sum((d) => d.jobsErr)}</b><span>failed</span></div></div>
 <div class="wk">${h.week.map((d) => `<div class="wk-d" title="${esc(d.date)}: ${d.requests} requests, ${d.jobsOk} recomputes, ${d.jobsErr} failed"><div class="wk-t"><span class="wk-n">${d.requests ? compact(d.requests) : ''}</span><span class="wk-b" style="height:${Math.max(2, Math.round((d.requests / maxReq) * 100))}px"></span></div><span class="wk-l">${new Date(d.date + 'T12:00:00Z').toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</span><span class="wk-e">${d.jobsErr ? `⚠ ${d.jobsErr}` : ''}</span></div>`).join('')}</div></section>

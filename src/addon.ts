@@ -311,10 +311,11 @@ const usable = (id: string, ctx: Ctx) => {
 };
 
 export async function manifest(ctx: Ctx) {
-  const picks = await cycleGenres(ctx);
+  // The manifest must never fail (Nuvio then refuses to install): every optional lookup falls back
+  const picks = await cycleGenres(ctx).catch(() => [] as string[]);
   const ids = orderedRowIds(ctx.settings).filter((id) => usable(id, ctx) && (cycleIndex(id) < 0 || !!picks[cycleIndex(id)]));
   const search = ctx.settings.language.startsWith('de') ? 'Suche' : 'Search';
-  const catalogs = await Promise.all(ids.map(async (id) => ({ type: ROWS[id].type, id, name: await rowName(id, ctx), extra: [{ name: 'skip' }] })));
+  const catalogs = await Promise.all(ids.map(async (id) => ({ type: ROWS[id].type, id, name: await rowName(id, ctx).catch(() => defaultName(id, ctx.settings.language)), extra: [{ name: 'skip' }] })));
   return {
     id: 'community.couchpilot',
     version: '0.5.0',
