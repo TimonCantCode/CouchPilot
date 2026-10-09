@@ -601,12 +601,12 @@ ${tmdb ? '<label class="check"><input class="sw" type="checkbox" name="removeTmd
 <label>Rating posters (RPDB key, optional)<span>${o.secrets.rpdbKey ? `Saved: <code>${esc(mask(o.secrets.rpdbKey))}</code>. Leave empty to keep it.` : 'Shows IMDb and other ratings right on the posters in your rows.'} <a href="https://ratingposterdb.com" target="_blank" rel="noopener noreferrer">Get a key ↗</a></span>
 <input type="password" name="rpdbKey" placeholder="${o.secrets.rpdbKey ? '••••••••' : 'e.g. t1-…'}" autocomplete="off" maxlength="100"></label>
 ${o.secrets.rpdbKey ? '<label class="check"><input class="sw" type="checkbox" name="removeRpdb" value="1">Delete saved key</label>' : ''}
-<label>Own poster URL (optional)<span>${o.secrets.posterUrl ? `Saved: <code>${esc(mask(o.secrets.posterUrl))}</code>. Leave empty to keep it.` : 'For any other rating-poster service. <code>{imdb}</code> becomes the IMDb ID (tt…), <code>{type}</code> movie or series. Used instead of RPDB.'}</span>
+<label>Custom poster API (optional)<span>${o.secrets.posterUrl ? `Saved: <code>${esc(mask(o.secrets.posterUrl))}</code>. Leave empty to keep it.` : 'URL template of any rating-poster API (an alternative to RPDB). Couchpilot fills in each title: <code>{imdb}</code> becomes the IMDb ID (tt…), <code>{type}</code> movie or series. Used instead of RPDB.'}</span>
 <input type="password" name="posterUrl" placeholder="${o.secrets.posterUrl ? '••••••••' : 'https://example.com/poster/{imdb}.jpg'}" autocomplete="off" maxlength="500"></label>
 ${o.secrets.posterUrl ? '<label class="check"><input class="sw" type="checkbox" name="removePosterUrl" value="1">Delete saved URL</label>' : ''}
-<details class="more"><summary><span>How to build the poster URL</span></summary>
+<details class="more"><summary><span>How to build the poster API URL</span></summary>
 <ul class="small muted" style="margin:4px 0 12px;padding-left:18px">
-<li>Take the image link your poster service gives you for one title and replace the IMDb ID (e.g. <code>tt1375666</code>) with <code>{imdb}</code>.</li>
+<li>Your poster API's docs show a URL pattern, or copy the image link it gives for any one title. Replace the IMDb ID in it (e.g. <code>tt1375666</code>) with <code>{imdb}</code>. Couchpilot then builds the poster URL for every title in your rows.</li>
 <li>If the link contains <code>movie</code> or <code>series</code>, you can replace that with <code>{type}</code>.</li>
 <li>It must start with <code>https://</code> and contain <code>{imdb}</code>. Keys in the URL are fine, the URL is stored encrypted.</li>
 <li>Example: <code>https://posters.example.com/{type}/{imdb}.jpg?key=abc123</code> becomes <code>https://posters.example.com/movie/tt1375666.jpg?key=abc123</code>.</li>
