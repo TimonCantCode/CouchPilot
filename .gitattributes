@@ -1,1 +1,4 @@
-*.sh text eol=lf
+# Always LF in the repo and in the working copy (the server is Linux)
+* text=auto eol=lf
+*.png binary
+*.svg text eol=lf
