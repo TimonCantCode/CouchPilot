@@ -45,6 +45,7 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
     if (t.includes('"titles"')) return J({ choices: [{ message: { content: '{"titles":["A","B"]}' } }] });
     return J({ choices: [{ message: { content: '{"picks":[{"i":0,"why":"fits"}]}' } }] });
   }
+  if (/strem\.io\/catalog\/(movie|series)\/(top|imdbRating)\.json/.test(u)) return J({ metas: [{ id: 'tt1375666', type: 'movie', name: 'Inception', poster: 'p' }] });
   if (u.includes('api.themoviedb.org')) {
     const path = new URL(u).pathname.replace('/3', '');
     let m;
@@ -354,5 +355,17 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     const r = await json(`${base}/catalog/movie/trending-movie.json`);
     assert.ok(r.metas.length > 0);
     assert.ok(r.metas.every((m: any) => m.poster.startsWith(`https://api.ratingposterdb.com/t0-free-rpdb/imdb/poster-default/${m.id}.jpg`)));
+  });
+
+  test('no-setup install: Cinemeta-like rows plus anime, no account or key', async () => {
+    const m = await json(B + '/manifest.json');
+    const rows = m.catalogs.filter((c: any) => c.id !== 'search');
+    assert.equal(rows.length, 7);
+    assert.deepEqual(rows.slice(0, 3).map((c: any) => c.name), ['Trending Now', 'Featured Movies', 'Featured Shows']);
+    assert.equal(rows[0].type, 'mixed');
+    assert.equal((await json(B + '/catalog/mixed/cm-trending-mix.json')).metas.length, 1, 'movies and shows merged, no duplicates');
+    assert.ok(rows.some((c: any) => c.id === 'anime-trending'));
+    const r = await json(B + '/catalog/movie/cm-rated-movie.json');
+    assert.equal(r.metas[0].name, 'Inception');
   });
 });

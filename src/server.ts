@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import { catalog, cycleToday, defaultName, KID_GENRES, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
+import { catalog, cycleToday, defaultName, PUBLIC_SETTINGS, KID_GENRES, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
 import { KID_AGES } from './web.ts';
 import { assertPublicUrl, PROVIDERS } from './ai.ts';
 import { hashPassword, verifyPassword } from './crypto.ts';
@@ -43,7 +43,7 @@ const RESOURCE_RE = new RegExp(`^\\/${TOKEN}(catalog|meta)\\/(movie|series|mixed
 
 // Without token: only rows without TMDB (anime) plus search and metadata, there is no server key
 async function ctxFor(token?: string): Promise<Ctx | null> {
-  if (!token) return { settings: DEFAULT_SETTINGS };
+  if (!token) return { settings: PUBLIC_SETTINGS };
   const cfg = await configByToken(token);
   return cfg && { settings: cfg.settings, tmdbKey: cfg.secrets.tmdbKey, rpdbKey: cfg.secrets.rpdbKey, userId: cfg.userId };
 }

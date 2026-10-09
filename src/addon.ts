@@ -1,5 +1,5 @@
 import { aiSearch, ensureFresh, genreWeights, moodName, moodSlot, personalRow, userDay, watchedIds } from './personal.ts';
-import { ageFrom, anilistList, recommendationsPath, tmdbSearch, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
+import { ageFrom, anilistList, cinemetaCatalog, recommendationsPath, tmdbSearch, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
 import { cached, configByUser, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
 export type Ctx = { settings: Settings; tmdbKey?: string; rpdbKey?: string; userId?: string };
@@ -144,6 +144,14 @@ async function similarTo(title: string, type: Type, ctx: Ctx): Promise<Meta[]> {
 
 const cycleIndex = (id: string) => (id.startsWith('cycle-') ? Number(id.slice(6)) - 1 : -1);
 
+// Cinemeta rows: work without a TMDB key (used by the no-setup install, can also be switched on in the config)
+const cinemetaRow = (type: Type, name: string, id: 'top' | 'imdbRating'): Row => ({
+  type,
+  name,
+  group: type === 'movie' ? 'Movies' : 'Series',
+  fetch: async (_ctx, page) => (page > 1 ? [] : cinemetaCatalog(type, id)), // ponytail: one page (Cinemeta returns ~50), add paging if people scroll past it
+});
+
 // Seasonal row: Halloween horror in October, Christmas movies in December, hidden the rest of the year
 export const season = (now = new Date()) => (now.getMonth() === 9 ? 'halloween' : now.getMonth() === 11 ? 'christmas' : null);
 const SEASON_NAMES = { halloween: ['Halloween Horror', 'Halloween-Horror'], christmas: ['Christmas Movies', 'Weihnachtsfilme'] } as const;
@@ -206,6 +214,11 @@ export const ROWS: Record<string, Row> = {
   'cycle-1': cycleRow(1),
   'cycle-2': cycleRow(2),
   'cycle-3': cycleRow(3),
+  'cm-trending-mix': { ...mixRow('Trending Now (Cinemeta)', 'cm-top-movie', 'cm-top-series'), needsTmdb: false },
+  'cm-top-movie': cinemetaRow('movie', 'Popular Movies (Cinemeta)', 'top'),
+  'cm-top-series': cinemetaRow('series', 'Popular Shows (Cinemeta)', 'top'),
+  'cm-rated-movie': cinemetaRow('movie', 'Featured Movies (Cinemeta)', 'imdbRating'),
+  'cm-rated-series': cinemetaRow('series', 'Featured Shows (Cinemeta)', 'imdbRating'),
   'foryou-anime': { ...personal('series', 'Anime Picks for You'), group: 'Anime', needsTmdb: false },
   'anime-trending': animeRow('series', 'Trending Anime', () => ({ sort: ['TRENDING_DESC'], format: 'TV' })),
   'anime-season': animeRow('series', "This Season's Anime", () => ({ sort: ['POPULARITY_DESC'], ...currentSeason() })),
@@ -260,6 +273,11 @@ const DE: Record<string, string> = {
   'cycle-1': 'Wechselndes Genre 1',
   'cycle-2': 'Wechselndes Genre 2',
   'cycle-3': 'Wechselndes Genre 3',
+  'cm-trending-mix': 'Gerade angesagt (Cinemeta)',
+  'cm-top-movie': 'Beliebte Filme (Cinemeta)',
+  'cm-top-series': 'Beliebte Serien (Cinemeta)',
+  'cm-rated-movie': 'Empfohlene Filme (Cinemeta)',
+  'cm-rated-series': 'Empfohlene Serien (Cinemeta)',
   'foryou-anime': 'Anime-Empfehlungen für dich',
   'anime-trending': 'Angesagte Anime',
   'anime-season': 'Anime dieser Season',
@@ -267,6 +285,15 @@ const DE: Record<string, string> = {
   'anime-new': 'Neue Anime',
   'anime-movies': 'Anime-Filme',
   'anime-movies-new': 'Neue Anime-Filme',
+};
+// The no-setup install (manifest.json without a token): like Cinemeta, plus anime rows. No account, no keys.
+// Trending Now replaces separate popular rows here: it is the same Cinemeta list, movies and shows alternating
+const PUBLIC_ROWS = ['cm-trending-mix', 'cm-rated-movie', 'cm-rated-series', 'anime-trending', 'anime-season', 'anime-popular', 'anime-movies'];
+export const PUBLIC_SETTINGS: Settings = {
+  ...DEFAULT_SETTINGS,
+  rows: PUBLIC_ROWS,
+  order: PUBLIC_ROWS,
+  names: { 'cm-trending-mix': 'Trending Now', 'cm-rated-movie': 'Featured Movies', 'cm-rated-series': 'Featured Shows' },
 };
 export const defaultName = (id: string, lang: string) => (lang.startsWith('de') && DE[id]) || ROWS[id].name;
 

@@ -264,7 +264,7 @@ ${previewRow('Complete the Saga', [270, 300, 230, 330, 250, 290, 210, 310, 260])
 <h2>Already set up?</h2><p>Two more ways in.</p>
 <div class="hero-cards" style="margin-top:0">
 <div class="sec" style="margin:0"><b>Change your settings</b><p class="small muted">Tap “Configure” on the addon in Nuvio, or log in with your account ID.</p><a class="btn ghost" href="/login">Log in</a></div>
-<div class="sec" style="margin:0"><b>Anime rows only</b><p class="small muted">No setup and no TMDB key, plus search and metadata.</p><input type="text" readonly value="${esc(publicUrl)}/manifest.json"></div>
+<div class="sec" style="margin:0"><b>Quick install, no setup</b><p class="small muted">Popular and featured movies and shows like Cinemeta, plus four anime rows, search and metadata. No account, no key.</p><input type="text" readonly value="${esc(publicUrl)}/manifest.json"></div>
 </div></div>`,
   );
 

@@ -323,6 +323,10 @@ export async function kitsuMeta(kitsuId: number) {
 export const cinemetaMeta = (type: Type, id: string) =>
   cached<any>(`cm:meta:${type}:${id}`, 24 * 3600, () => getJson(`${CINEMETA}/meta/${type}/${encodeURIComponent(id)}.json`));
 
+// Cinemeta's own catalogs ("top" = popular, "imdbRating" = featured): no key needed
+export const cinemetaCatalog = (type: Type, id: 'top' | 'imdbRating') =>
+  cached<Meta[]>(`cm:cat:${type}:${id}`, 6 * 3600, async () => (await getJson(`${CINEMETA}/catalog/${type}/${id}.json`)).metas ?? []);
+
 export const cinemetaSearch = (type: Type, q: string) =>
   cached<Meta[]>(`cm:search:${type}:${q.toLowerCase()}`, 3600, async () =>
     (await getJson(`${CINEMETA}/catalog/${type}/top/search=${encodeURIComponent(q)}.json`)).metas ?? []);
