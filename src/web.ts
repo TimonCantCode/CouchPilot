@@ -131,7 +131,9 @@ details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}de
 .row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.danger{color:#ff8a8f;border-color:rgba(229,9,20,.45)}
 .foot{margin:40px 0 0;font-size:12px;color:var(--muted)}.foot p{margin:8px 0}.foot img{opacity:.8}
 .foot-links{display:flex;align-items:center;gap:14px;margin-top:10px}.legal h2{font-size:17px;margin-top:28px}.legal li{margin:6px 0}
-.week{width:100%;border-collapse:collapse;font-size:14px}.week th,.week td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line)}.week th:first-child,.week td:first-child{text-align:left}.week th{color:var(--muted);font-weight:600;font-size:12px}.week .bad{color:var(--accent);font-weight:700}
+.wk-sum{display:flex;gap:28px;margin:4px 0 18px}.wk-sum div{display:flex;flex-direction:column}.wk-sum b{font-size:22px}.wk-sum span{font-size:12px;color:var(--muted)}.wk-sum .bad b{color:var(--accent)}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}.wk-d{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}.wk-t{height:124px;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px}.wk-e{min-height:14px}
+.wk-b{width:100%;max-width:44px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,var(--accent),rgba(229,9,20,.35))}.wk-n{font-size:12px;font-weight:600}.wk-l{font-size:12px;color:var(--muted)}.wk-e{font-size:11px;color:var(--accent);font-weight:600}
 .users{margin:14px 0 0;color:var(--muted);font-size:14px}.users b{color:var(--text)}
 .foot-links a{color:var(--muted);text-decoration:none}.foot-links .push{margin-left:auto}.foot img.tmdb{height:14px;width:auto;display:block}.foot-links a:hover{color:var(--text)}
 .ic-link{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line)}.ic-link:hover{border-color:#55555f}
@@ -282,6 +284,9 @@ const duration = (s: number) => {
 export const healthPage = (h: Health) => {
   const known = h.days.filter((d) => d.pct !== null);
   const avg = known.length ? known.reduce((a, d) => a + d.pct!, 0) / known.length : null;
+  const sum = (f: (d: Health['week'][number]) => number) => h.week.reduce((a, d) => a + f(d), 0);
+  const maxReq = Math.max(1, ...h.week.map((d) => d.requests));
+  const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
   const bar = (p: number | null) => (p === null ? 'none' : p >= 99.5 ? 'up' : p >= 95 ? 'warn' : 'down');
   return page(
     'Status',
@@ -296,15 +301,16 @@ ${h.users ? `<div class="sec"><span class="muted small">Users</span><b>${h.users
 <section class="sec"><h3 style="margin-top:0">Uptime, last 30 days</h3>
 <div class="bars">${h.days.map((d) => `<span class="b ${bar(d.pct)}" title="${esc(d.date)}: ${d.pct === null ? 'no data' : `${d.pct.toFixed(2)} %`}"></span>`).join('')}</div>
 <div class="small muted bars-legend"><span>30 days ago</span><span>today</span></div></section>
-<section class="sec"><h3 style="margin-top:0">Last 7 days</h3>
-<table class="week"><tr><th>Day</th><th>Addon requests</th><th>Recomputes</th><th>Failed</th></tr>
-${h.week.map((d) => `<tr><td>${esc(d.date.slice(5))}</td><td>${d.requests.toLocaleString('en')}</td><td>${d.jobsOk}</td><td${d.jobsErr ? ' class="bad"' : ''}>${d.jobsErr}</td></tr>`).join('')}</table></section>
 <section class="sec"><h3 style="margin-top:0">External services</h3>
 <p class="small muted" style="margin:0">If one of these is down, some rows or metadata may be missing for a while. Couchpilot keeps serving what it has cached.</p>
 ${h.external.map((c) => `<div class="conn" style="margin-top:8px"><b><span class="dot${c.ok ? ' on' : ''}"></span>${esc(c.name)}</b><span class="small muted">${c.ok ? `${c.ms} ms` : 'not reachable'}</span></div>`).join('')}</section>
 <section class="sec"><h3 style="margin-top:0">Checks</h3>
 ${h.checks.map((c) => `<div class="conn" style="margin-top:8px"><b><span class="dot${c.ok ? ' on' : ''}"></span>${esc(c.name)}</b><span class="small muted">${c.ok ? `${c.ms} ms` : 'not reachable'}</span></div>`).join('')}
-<p class="small muted" style="margin:14px 0 0">Version ${esc(h.version)} · ${h.animeTitles.toLocaleString('en')} anime titles mapped · <code>curl …/health</code> returns the same as JSON</p></section>`,
+<p class="small muted" style="margin:14px 0 0">Version ${esc(h.version)} · ${h.animeTitles.toLocaleString('en')} anime titles mapped · <code>curl …/health</code> returns the same as JSON</p></section>
+<section class="sec"><h3 style="margin-top:0">Last 7 days</h3>
+<div class="wk-sum"><div><b>${sum((d) => d.requests).toLocaleString('en')}</b><span>addon requests</span></div><div><b>${sum((d) => d.jobsOk)}</b><span>recomputes</span></div><div${sum((d) => d.jobsErr) ? ' class="bad"' : ''}><b>${sum((d) => d.jobsErr)}</b><span>failed</span></div></div>
+<div class="wk">${h.week.map((d) => `<div class="wk-d" title="${esc(d.date)}: ${d.requests} requests, ${d.jobsOk} recomputes, ${d.jobsErr} failed"><div class="wk-t"><span class="wk-n">${d.requests ? compact(d.requests) : ''}</span><span class="wk-b" style="height:${Math.max(2, Math.round((d.requests / maxReq) * 100))}px"></span></div><span class="wk-l">${new Date(d.date + 'T12:00:00Z').toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</span><span class="wk-e">${d.jobsErr ? `⚠ ${d.jobsErr}` : ''}</span></div>`).join('')}</div></section>
+`,
   );
 };
 
