@@ -117,7 +117,7 @@ main:has(.shell){max-width:1100px}
 .side a b{display:grid;place-items:center;width:24px;height:24px;flex:none;border-radius:50%;background:var(--panel2);border:1px solid var(--line);font-size:12px;color:var(--text)}
 .side a:hover{background:var(--panel);color:var(--text)}
 .side a[aria-current]{background:var(--panel);color:var(--text);box-shadow:inset 3px 0 0 var(--accent)}
-.side a.done b{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.5)}
+.side a.done b{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.5);color:#4ade80}
 .burger{display:none}.scrim{display:none}
 .psw select{margin:0;padding:7px 30px 7px 12px;font-size:13px;font-weight:600;max-width:180px}.savebtns{display:inline-flex;gap:8px}
 .js .step:not(.on),.js [data-steps]:not(.on){display:none}
@@ -330,6 +330,15 @@ imf&&imf.addEventListener('change',async()=>{const f=imf.files[0];if(!f)return;i
 document.getElementById('importdata').value=await f.text();if(confirm('Replace this profile’s settings with the imported ones?'))document.getElementById('importform').submit();imf.value='';});
 document.querySelectorAll('form[data-confirm]').forEach(f=>f.addEventListener('submit',e=>{if(!confirm(f.dataset.confirm))e.preventDefault();}));`;
 
+// Sidebar icons per step (green when that step is set up)
+const STEP_ICONS: Record<string, string> = {
+  history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  rows: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/>',
+  ai: '<path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8z"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z"/>',
+  settings: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  profiles: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.9.7 3.1 2.5 3.5 5.2"/>',
+  finish: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+};
 // "More rows" is split into these sections (empty ones are hidden by CSS)
 const MORE_GROUPS: [string, string][] = [
   ['For You (watch history + AI)', '★ For you'],
@@ -470,7 +479,7 @@ export function configPage(o: {
 <div class="shell">
 <nav class="side" id="side" aria-label="Setup steps">
 <p class="side-h">Setup</p>
-${steps.map(([id, title, done], i) => `<a href="#${id}"${done ? ' class="done"' : ''}><b>${done ? '✓' : i + 1}</b>${title}</a>`).join('')}
+${steps.map(([id, title, done]) => `<a href="#${id}"${done ? ' class="done" title="Set up"' : ''}><b><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${STEP_ICONS[id]}</svg></b>${title}</a>`).join('')}
 </nav>
 <div class="scrim" id="scrim"></div>
 <div class="content">
