@@ -1,5 +1,5 @@
 import { aiSearch, ensureFresh, genreWeights, moodName, moodSlot, personalRow, userDay, watchedIds } from './personal.ts';
-import { ageFrom, anilistList, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
+import { ageFrom, anilistList, recommendationsPath, tmdbSearch, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
 import { cached, configByUser, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
 export type Ctx = { settings: Settings; tmdbKey?: string; userId?: string };
@@ -110,6 +110,38 @@ async function cycleGenres(ctx: Ctx): Promise<string[]> {
 }
 // Today's genre name per rotating slot, for the config page
 export const cycleToday = async (ctx: Ctx) => Promise.all((await cycleGenres(ctx)).map((g) => rowName(g, ctx)));
+// Variety: personal and genre rows are reshuffled every 6 hours, the first picks stay on top.
+// Seeded, so all pages and repeated loads within the window agree. Date-ordered rows keep their order.
+const KEEP_ORDER = new Set(['upcoming', 'new-episodes', 'saga-movie']);
+export function mixUp<T>(items: T[], seed: string, keep: number): T[] {
+  const rnd = seeded(seed);
+  const rest = items.slice(keep);
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  return [...items.slice(0, keep), ...rest];
+}
+
+// "like Inception" / "ähnlich wie Dark" in Nuvio's search: TMDB recommendations for that title, no AI call
+export const LIKE = /^(?:like|similar to|more like|ähnlich wie|wie)\s+(.{2,})$/i;
+async function similarTo(title: string, type: Type, ctx: Ctx): Promise<Meta[]> {
+  const key = ctx.tmdbKey!;
+  const lang = ctx.settings.language;
+  const seed = await cached(`like:${title.toLowerCase()}:${lang}`, 7 * 86400, async () => {
+    const found = await Promise.all(
+      (['movie', 'series'] as const).map(async (t) =>
+        (await tmdbSearch(t, title, undefined, key, lang)).slice(0, 3).map((x: any) => ({ type: t, id: x.id as number, name: String(x.title ?? x.name ?? '').toLowerCase(), pop: Number(x.popularity ?? 0) })),
+      ),
+    );
+    const all = found.flat();
+    const exact = all.filter((x) => x.name === title.toLowerCase());
+    return (exact.length ? exact : all).sort((a, b) => b.pop - a.pop)[0] ?? null; // the title the user most likely means
+  });
+  if (!seed || seed.type !== type) return [];
+  return tmdbList(recommendationsPath(type, seed.id), type, key, 1, lang);
+}
+
 const cycleIndex = (id: string) => (id.startsWith('cycle-') ? Number(id.slice(6)) - 1 : -1);
 
 // Seasonal row: Halloween horror in October, Christmas movies in December, hidden the rest of the year
@@ -330,6 +362,8 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
     const q = extra.get('search')?.trim().slice(0, 100);
     if (!q || type === 'mixed') return { metas: [] };
     // Descriptions ("movie with the dream in a dream", 3+ words) also go to the AI; its hits come first
+    const like = q.match(LIKE);
+    if (like && ctx.tmdbKey) return { metas: await kidsFilter(await similarTo(like[1].trim(), type, ctx).catch(() => [] as Meta[]), ctx) };
     const useAi = !!ctx.userId && q.split(/\s+/).length >= 3;
     const [plain, smart] = await Promise.all([
       cinemetaSearch(type, q).catch(() => [] as Meta[]),
@@ -342,7 +376,10 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   // ponytail: round instead of floor, filtered pages return < 20 items so skip is uneven
   const page = Math.round(Number(extra.get('skip') ?? 0) / 20) + 1;
   if (!(page >= 1 && page <= 25)) return { metas: [] };
-  return { metas: await kidsFilter(await rowMetas(id, ctx, page), ctx), cacheMaxAge: row.personal ? 600 : 3600 };
+  let metas = await rowMetas(id, ctx, page);
+  if (ctx.settings.shuffle && ctx.userId && (row.personal || row.genres || cycleIndex(id) >= 0) && !KEEP_ORDER.has(id))
+    metas = mixUp(metas, `${ctx.userId}:${id}:${page}:${Math.floor(Date.now() / (6 * 3600_000))}`, row.personal ? 3 : 0);
+  return { metas: await kidsFilter(metas, ctx), cacheMaxAge: row.personal ? 600 : 3600 };
 }
 
 // Kids mode: only titles with a known age rating up to the limit and none of the blocked genres

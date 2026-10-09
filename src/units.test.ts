@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, discover, isOn, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
+import { defaultName, discover, isOn, LIKE, mixUp, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
 import { parseItems } from './ai.ts';
 import { ageFrom, trailerFrom } from './sources.ts';
 import { DEFAULT_SETTINGS } from './store.ts';
@@ -101,4 +101,17 @@ test('rotating genres: same pick all day, distinct, history-weighted', () => {
   const days = Array.from({ length: 200 }, (_, d) => pickGenres(pool, (id) => (id === 'genre-horror' ? 9 : 1), `u1:${d}`, 1)[0]);
   assert.ok(days.filter((g) => g === 'genre-horror').length > 100, 'liked genre comes up more often');
   assert.ok(new Set(days).size > 1, 'others still come up');
+});
+
+test('similar search pattern and stable shuffle', () => {
+  assert.equal('like Inception'.match(LIKE)?.[1], 'Inception');
+  assert.equal('ähnlich wie Dark'.match(LIKE)?.[1], 'Dark');
+  assert.equal('Wie Breaking Bad'.match(LIKE)?.[1], 'Breaking Bad');
+  assert.equal('Inception'.match(LIKE), null);
+  const xs = Array.from({ length: 20 }, (_, i) => i);
+  const a = mixUp(xs, 's', 3);
+  assert.deepEqual(a.slice(0, 3), [0, 1, 2], 'best picks stay first');
+  assert.deepEqual([...a].sort((x, y) => x - y), xs, 'nothing lost or duplicated');
+  assert.deepEqual(a, mixUp(xs, 's', 3), 'same seed, same order');
+  assert.notDeepEqual(a, mixUp(xs, 't', 3), 'new window, new order');
 });

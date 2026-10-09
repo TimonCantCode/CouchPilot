@@ -82,6 +82,7 @@ export type Settings = {
   nuvioProfiles: { index: number; name: string }[];
   anilistUser: string;
   meta: { source: 'cinemeta' | 'enhanced'; localize: boolean; cast: boolean; trailers: boolean; episodes: boolean };
+  shuffle: boolean; // mix up personal and genre rows a few times a day (best picks stay first)
   hideWatched: boolean; // hide already watched titles in Trending, Popular, New … rows
   aiDailyLimit: number; // max. AI calls per day for this profile, protects the key if the install URL leaks
   aiSearch: boolean; // Nuvio search also understands descriptions ("the movie with the dream in a dream")
@@ -114,6 +115,7 @@ export const DEFAULT_SETTINGS: Settings = {
   anilistUser: '',
   meta: { source: 'enhanced', localize: true, cast: true, trailers: true, episodes: true },
   hideWatched: true,
+  shuffle: true,
   aiDailyLimit: 40,
   aiSearch: true,
   kids: { on: false, maxAge: 12, blockGenres: ['horror', 'thriller', 'crime', 'war'] },

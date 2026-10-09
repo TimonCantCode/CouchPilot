@@ -324,4 +324,15 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     const base = installUrl(page).replace('/manifest.json', '');
     assert.equal((await fetch(`${base}/catalog/mixed/cycle-1.json`)).status, 200);
   });
+
+  test('search "like X" returns similar titles without an AI call', async () => {
+    const base = installUrl(await owner.page()).replace('/manifest.json', '');
+    const before = aiCalls.length;
+    const r = await json(`${base}/catalog/movie/search/search=${encodeURIComponent('like Inception')}.json`);
+    assert.ok(r.metas.length > 0, 'recommendations for Inception');
+    assert.ok(!r.metas.some((m: any) => m.id === 'tt1375666'), 'not the title itself');
+    assert.equal(aiCalls.length, before, 'no AI call');
+    const s = await json(`${base}/catalog/series/search/search=${encodeURIComponent('like Inception')}.json`);
+    assert.equal(s.metas.length, 0, 'Inception is a movie, so no series');
+  });
 });

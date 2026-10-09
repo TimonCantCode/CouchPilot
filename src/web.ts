@@ -487,6 +487,7 @@ ${scopeNote}
 <div class="rows" id="rowmore">${moreRows.map(rowHtml).join('')}</div></details>
 ${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for this profile’s “For You” rows<select name="nuvioProfile">${s.nuvioProfiles.map((p) => `<option value="${p.index}"${p.index === s.nuvioProfile ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
 <label class="check"><input class="sw" type="checkbox" name="hideWatched" value="1"${s.hideWatched ? ' checked' : ''}>Hide titles this profile has already watched in Trending, Popular, New and the other standard rows</label>
+<label class="check"><input class="sw" type="checkbox" name="shuffle" value="1"${s.shuffle ? ' checked' : ''}>Mix up the order of your personal and genre rows every few hours, so the home screen feels fresh (your best picks stay first)</label>
 <h3>Rotating genres</h3>
 <p class="small muted" style="margin:0">Switch on “Rotating Genre 1–3” in the rows above. Every day they show different genres from your selection. Genres you already have as their own row are skipped.</p>
 <label>How to pick<select name="cycleMode"><option value="history"${s.genreCycle.mode === 'history' ? ' selected' : ''}>Weighted by your watch history (genres you like come up more often)</option><option value="random"${s.genreCycle.mode === 'random' ? ' selected' : ''}>Random</option></select></label>
@@ -511,7 +512,7 @@ ${o.secrets.aiKey ? '<label class="check"><input class="sw" type="checkbox" name
 <label>Model<span>Empty = the provider’s default model.</span><input type="text" name="aiModel" maxlength="100" value="${esc(ai.model)}"></label>
 <label>Your wishes<span>The AI takes this into account every time.</span><textarea name="aiPrompt" maxlength="500" placeholder="e.g. more thrillers and sci-fi, no rom-coms, older classics are welcome">${esc(s.aiPrompt)}</textarea></label>
 <label class="check"><input class="sw" type="checkbox" name="aiReasons" value="1"${s.aiReasons ? ' checked' : ''}>Short reason in the description (“Because you liked Dark …”)</label>
-<label class="check"><input class="sw" type="checkbox" name="aiSearch" value="1"${s.aiSearch ? ' checked' : ''}>AI search: Nuvio's search also understands descriptions like “the movie with the dream in a dream” (3+ words, max. 30 per day)</label>
+<label class="check"><input class="sw" type="checkbox" name="aiSearch" value="1"${s.aiSearch ? ' checked' : ''}>AI search: Nuvio's search also understands descriptions like “the movie with the dream in a dream” (3+ words, max. 30 per day). Tip: “like Inception” or “wie Dark” finds similar titles, also without AI</label>
 ${usageBox}
 <label>Daily AI limit<span>Protects your key if your install URL leaks or something goes wrong. Resets at midnight; a recompute uses about 5 calls.</span><select name="aiDailyLimit">${AI_LIMITS.map((n) => `<option value="${n}"${n === s.aiDailyLimit ? ' selected' : ''}>${n} calls per day</option>`).join('')}</select></label>
 </div>
