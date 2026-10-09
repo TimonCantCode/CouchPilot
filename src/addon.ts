@@ -46,6 +46,33 @@ const mixRow = (name: string, movie: string, series: string, group = 'Mixed (mov
   personal: movie.startsWith('foryou-'),
 });
 
+const interleave = (a: Meta[], b: Meta[]) => {
+  const out: Meta[] = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) out.push(...[a[i], b[i]].filter((m): m is Meta => !!m));
+  return [...new Map(out.map((m) => [m.id, m])).values()];
+};
+
+// Genre rows like Netflix: popular titles of one genre, movies and series alternating where TMDB has a TV genre.
+// Anime (genre 16) is left out except in Family, it has its own rows.
+const GENRES = 'Genres';
+export const discover = (type: Type, genre: number) =>
+  `/discover/${type === 'movie' ? 'movie' : 'tv'}?with_genres=${genre}${genre === 10751 ? '' : '&without_genres=16'}&sort_by=popularity.desc&vote_count.gte=${type === 'movie' ? 300 : 100}`;
+const genreRow = (name: string, movie: number, tv?: number): Row => ({
+  type: tv ? 'mixed' : 'movie',
+  name,
+  group: GENRES,
+  needsTmdb: true,
+  fetch: async (ctx, page) => {
+    if (!ctx.tmdbKey) throw new Error('no TMDB key');
+    const { language } = ctx.settings;
+    const [a, b] = await Promise.all([
+      tmdbList(discover('movie', movie), 'movie', ctx.tmdbKey, page, language),
+      tv ? tmdbList(discover('series', tv), 'series', ctx.tmdbKey, page, language) : [],
+    ]);
+    return interleave(a, b);
+  },
+});
+
 // Seasonal row: Halloween horror in October, Christmas movies in December, hidden the rest of the year
 export const season = (now = new Date()) => (now.getMonth() === 9 ? 'halloween' : now.getMonth() === 11 ? 'christmas' : null);
 const SEASON_NAMES = { halloween: ['Halloween Horror', 'Halloween-Horror'], christmas: ['Christmas Movies', 'Weihnachtsfilme'] } as const;
@@ -94,6 +121,17 @@ export const ROWS: Record<string, Row> = {
   'new-series': tmdbRow('series', 'Airing This Week', '/tv/on_the_air'),
   'toprated-movie': tmdbRow('movie', 'Top Rated Movies', '/movie/top_rated'),
   'toprated-series': tmdbRow('series', 'Top Rated Shows', '/tv/top_rated'),
+  'genre-action': genreRow('Action & Adventure', 28, 10759),
+  'genre-comedy': genreRow('Comedies', 35, 35),
+  'genre-scifi': genreRow('Sci-Fi & Fantasy', 878, 10765),
+  'genre-horror': genreRow('Horror', 27),
+  'genre-thriller': genreRow('Thrillers', 53),
+  'genre-crime': genreRow('Crime', 80, 80),
+  'genre-drama': genreRow('Dramas', 18, 18),
+  'genre-romance': genreRow('Romance', 10749),
+  'genre-mystery': genreRow('Mystery', 9648, 9648),
+  'genre-family': genreRow('Family', 10751, 10751),
+  'genre-docs': genreRow('Documentaries', 99, 99),
   'foryou-anime': { ...personal('series', 'Anime Picks for You'), group: 'Anime', needsTmdb: false },
   'anime-trending': animeRow('series', 'Trending Anime', () => ({ sort: ['TRENDING_DESC'], format: 'TV' })),
   'anime-season': animeRow('series', "This Season's Anime", () => ({ sort: ['POPULARITY_DESC'], ...currentSeason() })),
@@ -134,6 +172,17 @@ const DE: Record<string, string> = {
   'new-series': 'Diese Woche neu',
   'toprated-movie': 'Am besten bewertete Filme',
   'toprated-series': 'Am besten bewertete Serien',
+  'genre-action': 'Action & Abenteuer',
+  'genre-comedy': 'Komödien',
+  'genre-scifi': 'Sci-Fi & Fantasy',
+  'genre-horror': 'Horror',
+  'genre-thriller': 'Thriller',
+  'genre-crime': 'Krimi',
+  'genre-drama': 'Dramen',
+  'genre-romance': 'Liebesfilme',
+  'genre-mystery': 'Mystery',
+  'genre-family': 'Familie',
+  'genre-docs': 'Dokus',
   'foryou-anime': 'Anime-Empfehlungen für dich',
   'anime-trending': 'Angesagte Anime',
   'anime-season': 'Anime dieser Season',
@@ -202,11 +251,6 @@ export async function manifest(ctx: Ctx) {
 }
 
 // Alternate movie, series, movie, … without duplicates
-const interleave = (a: Meta[], b: Meta[]) => {
-  const out: Meta[] = [];
-  for (let i = 0; i < Math.max(a.length, b.length); i++) out.push(...[a[i], b[i]].filter((m): m is Meta => !!m));
-  return [...new Map(out.map((m) => [m.id, m])).values()];
-};
 
 async function rowMetas(id: string, ctx: Ctx, page: number): Promise<Meta[]> {
   const row = ROWS[id];

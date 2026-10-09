@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, isOn, orderedRowIds, ROWS, season } from './addon.ts';
+import { defaultName, discover, isOn, orderedRowIds, ROWS, season } from './addon.ts';
 import { parseItems } from './ai.ts';
 import { ageFrom, trailerFrom } from './sources.ts';
 import { DEFAULT_SETTINGS } from './store.ts';
@@ -78,4 +78,14 @@ test('save for all copies only what changed', async () => {
   const withRow = { ...english, rows: [...english.rows, 'toprated-movie'] };
   const g2 = apply({ ...german, rows: ['trending-movie'], order: Object.keys(ROWS) }, changes(english, withRow), withRow);
   assert.deepEqual(g2.rows.sort(), ['toprated-movie', 'trending-movie']);
+});
+
+test('genre rows: off by default, anime left out, family keeps animation', () => {
+  const ids = Object.keys(ROWS).filter((id) => id.startsWith('genre-'));
+  assert.ok(ids.length >= 10);
+  for (const id of ids) assert.equal(isOn(id, DEFAULT_SETTINGS), false, `${id} must not switch itself on for existing users`);
+  assert.equal(ROWS['genre-comedy'].type, 'mixed');
+  assert.equal(ROWS['genre-horror'].type, 'movie'); // TMDB has no TV horror genre
+  assert.match(discover('series', 35), /^\/discover\/tv\?with_genres=35&without_genres=16&/);
+  assert.doesNotMatch(discover('movie', 10751), /without_genres/);
 });
