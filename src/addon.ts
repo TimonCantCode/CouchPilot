@@ -108,6 +108,8 @@ async function cycleGenres(ctx: Ctx): Promise<string[]> {
   const weight = (id: string) => 1 + (8 * Math.max(...ROWS[id].genres!.map((g) => w[g] ?? 0))) / max;
   return pickGenres(pool, weight, `${ctx.userId}:${userDay(s.timezone)}`);
 }
+// Today's genre name per rotating slot, for the config page
+export const cycleToday = async (ctx: Ctx) => Promise.all((await cycleGenres(ctx)).map((g) => rowName(g, ctx)));
 const cycleIndex = (id: string) => (id.startsWith('cycle-') ? Number(id.slice(6)) - 1 : -1);
 
 // Seasonal row: Halloween horror in October, Christmas movies in December, hidden the rest of the year

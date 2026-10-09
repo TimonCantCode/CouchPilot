@@ -317,6 +317,7 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     const page = await owner.page();
     assert.match(page, /value="genre-comedy" checked/);
     assert.doesNotMatch(page, /value="genre-horror" checked/);
+    assert.match(page, />(Comedies|Documentaries)<\/span>/, 'config shows today\'s genre');
     const m = await json(installUrl(page));
     const names = m.catalogs.filter((c: any) => c.id.startsWith('cycle-')).map((c: any) => c.name).sort();
     assert.deepEqual(names, ['Comedies', 'Documentaries'], 'two genres in the pool = two rows, third slot hidden');

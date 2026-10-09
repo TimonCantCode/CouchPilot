@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import { catalog, defaultName, KID_GENRES, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
+import { catalog, cycleToday, defaultName, KID_GENRES, manifest, meta, ROWS, type Ctx, type RowType } from './addon.ts';
 import { KID_AGES } from './web.ts';
 import { assertPublicUrl, PROVIDERS } from './ai.ts';
 import { hashPassword, verifyPassword } from './crypto.ts';
@@ -263,7 +263,7 @@ async function profileInfo(root: string, nuvio: { index: number; name: string }[
 async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, status = 200) {
   const userId = res.locals.userId as string;
   const [cfg, root] = await Promise.all([configByUser(userId), rootOf(userId)]);
-  const [trakt, simkl, pw, profiles, job, defaultId, usage] = await Promise.all([
+  const [trakt, simkl, pw, profiles, job, defaultId, usage, cycle] = await Promise.all([
     redis.get(`trakt:dev:${userId}`),
     redis.get(`simkl:pin:${userId}`),
     db.query('select pw_hash is not null as has from users where id = $1', [root]),
@@ -271,6 +271,7 @@ async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, 
     jobsOf(userId),
     defaultProfileOf(userId),
     aiUsage(userId),
+    cycleToday({ settings: cfg.settings, tmdbKey: cfg.secrets.tmdbKey, userId }).catch(() => [] as string[]),
   ]);
   page(
     res,
@@ -294,6 +295,7 @@ async function renderConfig(res: Response, msg?: { ok: boolean; text: string }, 
         simklPending: simkl ? JSON.parse(simkl) : null,
         jobs: job,
         aiUsage: usage,
+        cycleToday: cycle,
         supportUrl: SUPPORT_URL,
         msg,
       }),

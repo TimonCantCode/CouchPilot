@@ -353,13 +353,18 @@ export function configPage(o: {
   aiUsage: { calls: number; in: number; out: number };
   supportUrl?: string;
   msg?: { ok: boolean; text: string };
+  cycleToday?: string[];
 }) {
   const s = o.settings;
   const isRoot = o.profileId === o.accountId;
   const rowHtml = (id: string) => {
       const r = ROWS[id];
       const type = r.type === 'mixed' ? 'Mix' : r.type === 'movie' ? 'Movie' : 'Series';
-      const pill = r.type === 'mixed' ? 'Mix' : r.group === 'Anime' ? (r.type === 'movie' ? 'Anime movie' : 'Anime') : type;
+      const today = id.startsWith('cycle-') ? o.cycleToday?.[Number(id.slice(6)) - 1] : undefined;
+      if (today) return rowHtmlBase(id, r, type, today);
+      return rowHtmlBase(id, r, type, r.type === 'mixed' ? 'Mix' : r.group === 'Anime' ? (r.type === 'movie' ? 'Anime movie' : 'Anime') : type);
+  };
+  const rowHtmlBase = (id: string, r: (typeof ROWS)[string], type: string, pill: string) => {
       return `<div class="row"><span class="handle" draggable="true" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
 <input class="sw" type="checkbox" name="rows" value="${esc(id)}" aria-label="Show ${esc(r.name)}"${isOn(id, s) ? ' checked' : ''}${id.startsWith('custom-') ? ' disabled title="On when the row has a prompt (below)"' : ''}>
 <input type="text" name="name_${esc(id)}" maxlength="60" placeholder="${esc(defaultName(id, s.language))}" value="${esc(s.names[id] ?? defaultName(id, s.language))}" aria-label="Name for ${esc(r.name)}" title="${esc(GROUP_PILL[r.group] ?? r.group)} · ${type}">
