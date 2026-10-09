@@ -94,6 +94,7 @@ export type Settings = {
 };
 export type Secrets = {
   tmdbKey?: string;
+  rpdbKey?: string; // ratingposterdb.com: posters with ratings
   aiKey?: string;
   nuvio?: { refreshToken: string };
   trakt?: { accessToken: string; refreshToken: string; expiresAt: number };
@@ -150,7 +151,7 @@ async function resolve(userId: string, settings: Settings, secrets: Secrets): Pr
     inheritedFrom: defaultId,
     nuvioOwner,
     settings: { ...ds, nuvioProfile: settings.nuvioProfile, nuvioProfiles, anilistUser: settings.anilistUser, inherit: true, defaultProfile: '' },
-    secrets: { ...secrets, nuvio, tmdbKey: dsec!.tmdbKey ?? secrets.tmdbKey, aiKey: dsec!.aiKey },
+    secrets: { ...secrets, nuvio, tmdbKey: dsec!.tmdbKey ?? secrets.tmdbKey, aiKey: dsec!.aiKey, rpdbKey: dsec!.rpdbKey },
   };
 }
 

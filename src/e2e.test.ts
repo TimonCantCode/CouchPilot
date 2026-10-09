@@ -335,4 +335,21 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     const s = await json(`${base}/catalog/series/search/search=${encodeURIComponent('like Inception')}.json`);
     assert.equal(s.metas.length, 0, 'Inception is a movie, so no series');
   });
+
+  test('RPDB key: rating posters in rows, bad keys rejected', async () => {
+    let form = cfgForm(await owner.page());
+    form.set('rpdbKey', 't0/../evil');
+    form.set('scope', 'this');
+    assert.equal((await owner.req('/configure', form)).status, 400, 'key that could change the URL is refused');
+    form = cfgForm(await owner.page());
+    form.set('rpdbKey', 't0-free-rpdb');
+    form.set('scope', 'this');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    const page = await owner.page();
+    assert.doesNotMatch(page, /t0-free-rpdb/, 'key is masked on the page');
+    const base = installUrl(page).replace('/manifest.json', '');
+    const r = await json(`${base}/catalog/movie/trending-movie.json`);
+    assert.ok(r.metas.length > 0);
+    assert.ok(r.metas.every((m: any) => m.poster.startsWith(`https://api.ratingposterdb.com/t0-free-rpdb/imdb/poster-default/${m.id}.jpg`)));
+  });
 });

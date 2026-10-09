@@ -522,6 +522,9 @@ ${usageBox}
 <label>TMDB API key<span>${tmdb ? `Saved: <code>${esc(mask(tmdb))}</code>. Leave empty to keep it.` : 'Required for movie, series and For You rows.'} <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">Get one for free ↗</a></span>
 <input type="password" name="tmdbKey" placeholder="${tmdb ? '••••••••' : 'API key or read access token'}" autocomplete="off" maxlength="400"></label>
 ${tmdb ? '<label class="check"><input class="sw" type="checkbox" name="removeTmdb" value="1">Delete saved key</label>' : ''}
+<label>Rating posters (RPDB key, optional)<span>${o.secrets.rpdbKey ? `Saved: <code>${esc(mask(o.secrets.rpdbKey))}</code>. Leave empty to keep it.` : 'Shows IMDb and other ratings right on the posters in your rows.'} <a href="https://ratingposterdb.com" target="_blank" rel="noopener noreferrer">Get a key ↗</a></span>
+<input type="password" name="rpdbKey" placeholder="${o.secrets.rpdbKey ? '••••••••' : 'e.g. t1-…'}" autocomplete="off" maxlength="100"></label>
+${o.secrets.rpdbKey ? '<label class="check"><input class="sw" type="checkbox" name="removeRpdb" value="1">Delete saved key</label>' : ''}
 <label>Refresh rows<select name="refreshHours">${REFRESH_HOURS.map((h) => `<option value="${h}"${h === s.refreshHours ? ' selected' : ''}>every ${h} hour${h > 1 ? 's' : ''}</option>`).join('')}</select></label>
 <label>Metadata source<span>Detail pages and episodes. “Enhanced” keeps Cinemeta’s IMDb rating and episode IDs and adds TMDB on top. Needs the TMDB key.</span><select name="metaSource" id="metaSource">
 <option value="enhanced"${s.meta.source === 'enhanced' ? ' selected' : ''}>Enhanced (Cinemeta + TMDB)</option>
@@ -626,6 +629,7 @@ export const privacyPage = (o: NonNullable<typeof OPERATOR>) =>
 <p>Nur wenn du sie in den Einstellungen einträgst, ruft der Couchpilot-Server in deinem Auftrag folgende Dienste auf. Dabei wird nicht deine IP-Adresse übertragen, sondern die des Servers. Es gelten zusätzlich die Datenschutzbestimmungen des jeweiligen Anbieters.</p>
 <ul><li><b>Nuvio</b>: Mit deinem Login holen wir deine Profile, deinen Verlauf und deinen Fortschritt. Dein Passwort speichern wir nicht, nur einen verschlüsselten Zugangs-Token.</li>
 <li><b>Trakt, Simkl</b>: Über die Anmeldung beim jeweiligen Dienst holen wir deinen Verlauf und deine Bewertungen. Die Zugangs-Tokens werden verschlüsselt gespeichert.</li>
+<li><b>RPDB</b> (Rating Poster Database): Mit deinem Key lädt die Nuvio-App die Poster mit Bewertungen direkt von RPDB. Dabei sieht RPDB deine IP-Adresse und welche Titel angezeigt werden.</li>
 <li><b>AniList</b>: Mit deinem öffentlichen Benutzernamen holen wir deine öffentliche Anime-Liste.</li>
 <li><b>TMDB</b> (The Movie Database): Mit deinem API-Key holen wir Infos zu Filmen und Serien. Dabei werden Titel-IDs übertragen, keine Angaben zu deiner Person.</li>
 <li><b>KI-Anbieter</b> (z. B. OpenAI, Anthropic, Google, OpenRouter oder dein eigener Ollama-Server): Mit deinem API-Key schicken wir Titel aus deinem Verlauf, eine Auswahl möglicher Empfehlungen, deine eingetragenen Wünsche und Suchanfragen. Pro Tag gibt es ein Limit, das du einstellen kannst.</li></ul>

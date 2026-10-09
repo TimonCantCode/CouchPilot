@@ -22,6 +22,7 @@ Your couch, on autopilot: an unofficial Cinemeta replacement for Nuvio with pers
 - **AI search:** with AI set up, Nuvio's search also understands descriptions (“the movie with the dream in a dream”), 3+ words, max. 30 per day and user.
 - **Similar titles:** search “like Inception” or “ähnlich wie Dark” in Nuvio for recommendations to that title, no AI needed.
 - **Fresh home screen:** personal and genre rows are reshuffled every few hours, the best picks stay first (can be switched off).
+- **Rating posters:** optional RPDB key per profile puts IMDb and other ratings right on the posters.
 - **Kids mode** (per profile): age rating limit (German FSK, US as fallback) and blocked genres in every row and in search.
 - **Trailers in rows:** every row item carries its YouTube trailer, so Nuvio can autoplay it on the home screen.
 - **Seasonal row:** Halloween horror in October, Christmas movies in December, hidden the rest of the year.

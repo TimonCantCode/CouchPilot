@@ -2,7 +2,7 @@ import { aiSearch, ensureFresh, genreWeights, moodName, moodSlot, personalRow, u
 import { ageFrom, anilistList, recommendationsPath, tmdbSearch, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
 import { cached, configByUser, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
-export type Ctx = { settings: Settings; tmdbKey?: string; userId?: string };
+export type Ctx = { settings: Settings; tmdbKey?: string; rpdbKey?: string; userId?: string };
 // "mixed" = movies and series in one row. Nuvio opens every item with its own type.
 export type RowType = Type | 'mixed';
 type Row = {
@@ -363,13 +363,13 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
     if (!q || type === 'mixed') return { metas: [] };
     // Descriptions ("movie with the dream in a dream", 3+ words) also go to the AI; its hits come first
     const like = q.match(LIKE);
-    if (like && ctx.tmdbKey) return { metas: await kidsFilter(await similarTo(like[1].trim(), type, ctx).catch(() => [] as Meta[]), ctx) };
+    if (like && ctx.tmdbKey) return { metas: ratingPosters(await kidsFilter(await similarTo(like[1].trim(), type, ctx).catch(() => [] as Meta[]), ctx), ctx) };
     const useAi = !!ctx.userId && q.split(/\s+/).length >= 3;
     const [plain, smart] = await Promise.all([
       cinemetaSearch(type, q).catch(() => [] as Meta[]),
       useAi ? configByUser(ctx.userId!).then((cfg) => aiSearch(cfg, q, type)).catch(() => [] as Meta[]) : ([] as Meta[]),
     ]);
-    return { metas: await kidsFilter([...new Map([...smart, ...plain].map((m) => [m.id, m])).values()], ctx) };
+    return { metas: ratingPosters(await kidsFilter([...new Map([...smart, ...plain].map((m) => [m.id, m])).values()], ctx), ctx) };
   }
   const row = ROWS[id];
   if (!row || row.type !== type || !usable(id, ctx)) return { metas: [] };
@@ -379,8 +379,13 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   let metas = await rowMetas(id, ctx, page);
   if (ctx.settings.shuffle && ctx.userId && (row.personal || row.genres || cycleIndex(id) >= 0) && !KEEP_ORDER.has(id))
     metas = mixUp(metas, `${ctx.userId}:${id}:${page}:${Math.floor(Date.now() / (6 * 3600_000))}`, row.personal ? 3 : 0);
-  return { metas: await kidsFilter(metas, ctx), cacheMaxAge: row.personal ? 600 : 3600 };
+  return { metas: ratingPosters(await kidsFilter(metas, ctx), ctx), cacheMaxAge: row.personal ? 600 : 3600 };
 }
+
+// Rating posters: RPDB renders the poster with ratings on it; Nuvio loads the image straight from RPDB.
+// fallback=true: RPDB returns the normal poster when it has no rating poster for a title.
+export const ratingPosters = (metas: Meta[], ctx: Ctx): Meta[] =>
+  ctx.rpdbKey ? metas.map((m) => (m.id.startsWith('tt') ? { ...m, poster: `https://api.ratingposterdb.com/${ctx.rpdbKey}/imdb/poster-default/${m.id}.jpg?fallback=true` } : m)) : metas;
 
 // Kids mode: only titles with a known age rating up to the limit and none of the blocked genres
 export const KID_GENRES: Record<string, number[]> = { horror: [27], thriller: [53], crime: [80], war: [10752, 10768], romance: [10749], mystery: [9648] };
