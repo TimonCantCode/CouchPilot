@@ -601,6 +601,17 @@ ${tmdb ? '<label class="check"><input class="sw" type="checkbox" name="removeTmd
 <label>Rating posters (RPDB key, optional)<span>${o.secrets.rpdbKey ? `Saved: <code>${esc(mask(o.secrets.rpdbKey))}</code>. Leave empty to keep it.` : 'Shows IMDb and other ratings right on the posters in your rows.'} <a href="https://ratingposterdb.com" target="_blank" rel="noopener noreferrer">Get a key ↗</a></span>
 <input type="password" name="rpdbKey" placeholder="${o.secrets.rpdbKey ? '••••••••' : 'e.g. t1-…'}" autocomplete="off" maxlength="100"></label>
 ${o.secrets.rpdbKey ? '<label class="check"><input class="sw" type="checkbox" name="removeRpdb" value="1">Delete saved key</label>' : ''}
+<label>Own poster URL (optional)<span>${o.secrets.posterUrl ? `Saved: <code>${esc(mask(o.secrets.posterUrl))}</code>. Leave empty to keep it.` : 'For any other rating-poster service. <code>{imdb}</code> becomes the IMDb ID (tt…), <code>{type}</code> movie or series. Used instead of RPDB.'}</span>
+<input type="password" name="posterUrl" placeholder="${o.secrets.posterUrl ? '••••••••' : 'https://example.com/poster/{imdb}.jpg'}" autocomplete="off" maxlength="500"></label>
+${o.secrets.posterUrl ? '<label class="check"><input class="sw" type="checkbox" name="removePosterUrl" value="1">Delete saved URL</label>' : ''}
+<details class="more"><summary><span>How to build the poster URL</span></summary>
+<ul class="small muted" style="margin:4px 0 12px;padding-left:18px">
+<li>Take the image link your poster service gives you for one title and replace the IMDb ID (e.g. <code>tt1375666</code>) with <code>{imdb}</code>.</li>
+<li>If the link contains <code>movie</code> or <code>series</code>, you can replace that with <code>{type}</code>.</li>
+<li>It must start with <code>https://</code> and contain <code>{imdb}</code>. Keys in the URL are fine, the URL is stored encrypted.</li>
+<li>Example: <code>https://posters.example.com/{type}/{imdb}.jpg?key=abc123</code> becomes <code>https://posters.example.com/movie/tt1375666.jpg?key=abc123</code>.</li>
+<li>Test it: open your URL with a real IMDb ID in the browser. If you see a poster, it works in Nuvio too.</li>
+</ul></details>
 <label>Refresh rows<select name="refreshHours">${REFRESH_HOURS.map((h) => `<option value="${h}"${h === s.refreshHours ? ' selected' : ''}>every ${h} hour${h > 1 ? 's' : ''}</option>`).join('')}</select></label>
 ${tmdb ? '' : '<div class="note small" style="margin-top:16px">Without a TMDB key Couchpilot uses Cinemeta metadata, just like Nuvio by default. Add a free key above to unlock localized titles and descriptions, cast, trailers, logos and episode thumbnails.</div><div hidden>'}
 <label>Metadata source<span>Detail pages and episodes. “Enhanced” keeps Cinemeta’s IMDb rating and episode IDs and adds TMDB on top. Needs the TMDB key.</span><select name="metaSource" id="metaSource">
@@ -706,7 +717,7 @@ export const privacyPage = (o: NonNullable<typeof OPERATOR>) =>
 <p>Nur wenn du sie in den Einstellungen einträgst, ruft der Couchpilot-Server in deinem Auftrag folgende Dienste auf. Dabei wird nicht deine IP-Adresse übertragen, sondern die des Servers. Es gelten zusätzlich die Datenschutzbestimmungen des jeweiligen Anbieters.</p>
 <ul><li><b>Nuvio</b>: Mit deinem Login holen wir deine Profile, deinen Verlauf und deinen Fortschritt. Dein Passwort speichern wir nicht, nur einen verschlüsselten Zugangs-Token.</li>
 <li><b>Trakt, Simkl</b>: Über die Anmeldung beim jeweiligen Dienst holen wir deinen Verlauf und deine Bewertungen. Die Zugangs-Tokens werden verschlüsselt gespeichert.</li>
-<li><b>RPDB</b> (Rating Poster Database): Mit deinem Key lädt die Nuvio-App die Poster mit Bewertungen direkt von RPDB. Dabei sieht RPDB deine IP-Adresse und welche Titel angezeigt werden.</li>
+<li><b>RPDB</b> (Rating Poster Database) oder ein <b>eigener Poster-Dienst</b>, dessen Adresse du einträgst: Die Nuvio-App lädt die Poster direkt von dort. Dabei sieht der Dienst deine IP-Adresse und welche Titel angezeigt werden.</li>
 <li><b>AniList</b>: Mit deinem öffentlichen Benutzernamen holen wir deine öffentliche Anime-Liste.</li>
 <li><b>TMDB</b> (The Movie Database): Mit deinem API-Key holen wir Infos zu Filmen und Serien. Dabei werden Titel-IDs übertragen, keine Angaben zu deiner Person.</li>
 <li><b>KI-Anbieter</b> (z. B. OpenAI, Anthropic, Google, OpenRouter oder dein eigener Ollama-Server): Mit deinem API-Key schicken wir Titel aus deinem Verlauf, eine Auswahl möglicher Empfehlungen, deine eingetragenen Wünsche und Suchanfragen. Pro Tag gibt es ein Limit, das du einstellen kannst.</li></ul>

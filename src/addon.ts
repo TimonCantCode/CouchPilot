@@ -2,7 +2,7 @@ import { aiSearch, ensureFresh, genreWeights, moodName, moodSlot, personalRow, u
 import { ageFrom, anilistList, cinemetaCatalog, recommendationsPath, tmdbSearch, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
 import { cached, configByUser, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
-export type Ctx = { settings: Settings; tmdbKey?: string; rpdbKey?: string; userId?: string };
+export type Ctx = { settings: Settings; tmdbKey?: string; rpdbKey?: string; posterUrl?: string; userId?: string };
 // "mixed" = movies and series in one row. Nuvio opens every item with its own type.
 export type RowType = Type | 'mixed';
 type Row = {
@@ -410,10 +410,17 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   return { metas: ratingPosters(await kidsFilter(metas, ctx), ctx), cacheMaxAge: row.personal ? 600 : 3600 };
 }
 
+// Own poster URL (any rating-poster service) wins over RPDB.
 // Rating posters: RPDB renders the poster with ratings on it; Nuvio loads the image straight from RPDB.
 // fallback=true: RPDB returns the normal poster when it has no rating poster for a title.
 export const ratingPosters = (metas: Meta[], ctx: Ctx): Meta[] =>
-  ctx.rpdbKey ? metas.map((m) => (m.id.startsWith('tt') ? { ...m, poster: `https://api.ratingposterdb.com/${ctx.rpdbKey}/imdb/poster-default/${m.id}.jpg?fallback=true` } : m)) : metas;
+  ctx.posterUrl || ctx.rpdbKey
+    ? metas.map((m) =>
+        !m.id.startsWith('tt')
+          ? m
+          : { ...m, poster: ctx.posterUrl ? ctx.posterUrl.replaceAll('{imdb}', m.id).replaceAll('{type}', m.type) : `https://api.ratingposterdb.com/${ctx.rpdbKey}/imdb/poster-default/${m.id}.jpg?fallback=true` },
+      )
+    : metas;
 
 // Kids mode: only titles with a known age rating up to the limit and none of the blocked genres
 export const KID_GENRES: Record<string, number[]> = { horror: [27], thriller: [53], crime: [80], war: [10752, 10768], romance: [10749], mystery: [9648] };

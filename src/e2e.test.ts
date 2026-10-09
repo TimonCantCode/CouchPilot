@@ -355,6 +355,20 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     const r = await json(`${base}/catalog/movie/trending-movie.json`);
     assert.ok(r.metas.length > 0);
     assert.ok(r.metas.every((m: any) => m.poster.startsWith(`https://api.ratingposterdb.com/t0-free-rpdb/imdb/poster-default/${m.id}.jpg`)));
+    // own poster URL wins over RPDB; unsafe ones are refused
+    for (const bad of ['http://x.com/{imdb}.jpg', 'https://x.com/poster.jpg', 'https://x.com/{imdb}"onerror=1', 'javascript:{imdb}']) {
+      const f = cfgForm(await owner.page());
+      f.set('posterUrl', bad);
+      f.set('scope', 'this');
+      assert.equal((await owner.req('/configure', f)).status, 400, `refused: ${bad}`);
+    }
+    const f = cfgForm(await owner.page());
+    f.set('posterUrl', 'https://posters.example.com/{type}/{imdb}.jpg?key=secret');
+    f.set('scope', 'this');
+    assert.equal((await owner.req('/configure', f)).status, 303);
+    assert.doesNotMatch(await owner.page(), /key=secret/, 'URL is masked like a key');
+    const r2 = await json(`${base}/catalog/movie/trending-movie.json`);
+    assert.ok(r2.metas.every((m: any) => m.poster === `https://posters.example.com/movie/${m.id}.jpg?key=secret`));
   });
 
   test('no-setup install: Cinemeta-like rows plus anime, no account or key', async () => {

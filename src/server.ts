@@ -45,7 +45,7 @@ const RESOURCE_RE = new RegExp(`^\\/${TOKEN}(catalog|meta)\\/(movie|series|mixed
 async function ctxFor(token?: string): Promise<Ctx | null> {
   if (!token) return { settings: PUBLIC_SETTINGS };
   const cfg = await configByToken(token);
-  return cfg && { settings: cfg.settings, tmdbKey: cfg.secrets.tmdbKey, rpdbKey: cfg.secrets.rpdbKey, userId: cfg.userId };
+  return cfg && { settings: cfg.settings, tmdbKey: cfg.secrets.tmdbKey, rpdbKey: cfg.secrets.rpdbKey, posterUrl: cfg.secrets.posterUrl, userId: cfg.userId };
 }
 
 async function addonGuard(req: Request, res: Response, next: NextFunction) {
@@ -357,6 +357,9 @@ app.get('/configure', auth, async (req, res) => {
 
 // RPDB keys look like t0-free-rpdb / t1-abc…; strict so the key can't change the poster URL
 const RPDB_KEY = /^[A-Za-z0-9_-]{4,100}$/;
+// Own poster URL: https, must contain {imdb}, no characters that could break out of the URL. Nuvio loads it, our server never fetches it.
+const POSTER_URL = /^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%{}]*$/;
+const validPosterUrl = (u: string) => u.length <= 500 && POSTER_URL.test(u) && u.includes('{imdb}') && !/[{}]/.test(u.replaceAll('{imdb}', '').replaceAll('{type}', ''));
 const list = (v: unknown) => ([] as unknown[]).concat(v ?? []).map(String);
 // Rotating genres: only real genre rows; all (or none) ticked = [] = every genre, so new genres join automatically
 const GENRE_IDS = Object.keys(ROWS).filter((id) => ROWS[id].genres);
@@ -369,7 +372,7 @@ const VALID_TZ = new Set(TIMEZONES);
 // Give a profile its own copy of the shared settings and keys (it no longer follows the default profile)
 async function customize(userId: string) {
   const cfg = await configByUser(userId);
-  await updateSecrets(userId, (sec) => void Object.assign(sec, { tmdbKey: cfg.secrets.tmdbKey, aiKey: cfg.secrets.aiKey, rpdbKey: cfg.secrets.rpdbKey }));
+  await updateSecrets(userId, (sec) => void Object.assign(sec, { tmdbKey: cfg.secrets.tmdbKey, aiKey: cfg.secrets.aiKey, rpdbKey: cfg.secrets.rpdbKey, posterUrl: cfg.secrets.posterUrl }));
   await saveSettings(userId, { ...cfg.settings, inherit: false, defaultProfile: '' });
 }
 
@@ -481,7 +484,11 @@ app.post('/configure', auth, async (req, res) => {
   // install URL could point it to their own server and have the stored key sent there.
   const rpdbKey = field(b.rpdbKey);
   if (rpdbKey && !RPDB_KEY.test(rpdbKey)) return renderConfig(res, { ok: false, text: 'Invalid RPDB key. Nothing saved.' }, 400);
+  const posterUrl = field(b.posterUrl);
+  if (posterUrl && !validPosterUrl(posterUrl)) return renderConfig(res, { ok: false, text: 'Poster URL must start with https:// and contain {imdb}. Nothing saved.' }, 400);
   const keyUpdate = (prev: Settings['ai'], next: Settings['ai']) => (sec: Secrets) => {
+    if (b.removePosterUrl) delete sec.posterUrl;
+    else if (posterUrl) sec.posterUrl = posterUrl;
     if (b.removeRpdb) delete sec.rpdbKey;
     else if (rpdbKey) sec.rpdbKey = rpdbKey;
     if (b.removeTmdb) delete sec.tmdbKey;
@@ -553,7 +560,7 @@ app.post('/export', auth, async (req, res) => {
   // A leaked install URL must never reveal keys: exporting them needs a log-in with password
   if (req.body.keys === '1' && !res.locals.viaPassword)
     return renderConfig(res, { ok: false, text: 'Exporting keys needs a log-in with account ID and password. Settings without keys can be exported anytime.' }, 403);
-  if (req.body.keys === '1') data.keys = { tmdbKey: cfg.secrets.tmdbKey, aiKey: cfg.secrets.aiKey, rpdbKey: cfg.secrets.rpdbKey };
+  if (req.body.keys === '1') data.keys = { tmdbKey: cfg.secrets.tmdbKey, aiKey: cfg.secrets.aiKey, rpdbKey: cfg.secrets.rpdbKey, posterUrl: cfg.secrets.posterUrl };
   res.set({ 'Content-Type': 'application/json', 'Content-Disposition': `attachment; filename="couchpilot-settings-${new Date().toISOString().slice(0, 10)}.json"` });
   res.send(JSON.stringify(data, null, 2));
 });
@@ -615,6 +622,8 @@ app.post('/import', auth, async (req, res) => {
     if (tmdbOk) sec.tmdbKey = tmdbKey;
     const rpdb = clean(x.keys?.rpdbKey, 100);
     if (RPDB_KEY.test(rpdb)) sec.rpdbKey = rpdb;
+    const purl = clean(x.keys?.posterUrl, 500);
+    if (validPosterUrl(purl)) sec.posterUrl = purl;
     if (aiKey) sec.aiKey = aiKey;
     else if (settings.ai.provider !== own.ai.provider || settings.ai.baseUrl !== own.ai.baseUrl) delete sec.aiKey; // same rule as on save
   });

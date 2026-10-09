@@ -104,6 +104,7 @@ export type Settings = {
 export type Secrets = {
   tmdbKey?: string;
   rpdbKey?: string; // ratingposterdb.com: posters with ratings
+  posterUrl?: string; // own poster service, https URL with {imdb} (and optional {type}); wins over RPDB. Secret because it may contain a key
   aiKey?: string;
   nuvio?: { refreshToken: string };
   trakt?: { accessToken: string; refreshToken: string; expiresAt: number };
@@ -160,7 +161,7 @@ async function resolve(userId: string, settings: Settings, secrets: Secrets): Pr
     inheritedFrom: defaultId,
     nuvioOwner,
     settings: { ...ds, nuvioProfile: settings.nuvioProfile, nuvioProfiles, anilistUser: settings.anilistUser, inherit: true, defaultProfile: '' },
-    secrets: { ...secrets, nuvio, tmdbKey: dsec!.tmdbKey ?? secrets.tmdbKey, aiKey: dsec!.aiKey, rpdbKey: dsec!.rpdbKey },
+    secrets: { ...secrets, nuvio, tmdbKey: dsec!.tmdbKey ?? secrets.tmdbKey, aiKey: dsec!.aiKey, rpdbKey: dsec!.rpdbKey, posterUrl: dsec!.posterUrl },
   };
 }
 
