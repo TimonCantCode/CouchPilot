@@ -166,6 +166,7 @@ main:has(.shell){max-width:1100px}
 main:has(.home){max-width:1040px}
 .home h1{font-size:clamp(38px,6vw,58px);margin-top:8px}
 .home .lead{max-width:620px;font-size:18px}
+@media (max-width:560px){.home .brand .gh{display:none}.home .brand{font-size:18px;margin-bottom:20px}.home .top{flex-wrap:nowrap}.home .top .btn{padding:7px 10px;white-space:nowrap}.home .cta>*{flex:1;display:flex;margin:0}.home .cta button,.home .cta .btn{width:100%;height:50px;display:flex;align-items:center;justify-content:center;padding:0 10px;white-space:nowrap;box-sizing:border-box}}
 .home .cta{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .home .cta button,.home .cta .btn{padding:13px 22px;font-size:16px}
 .home h2{font-size:24px;letter-spacing:-.02em;margin:64px 0 6px}
@@ -222,7 +223,7 @@ export const usersLabel = (n = 0) => {
 export const homePage = (publicUrl: string, supportUrl?: string, error?: string, users?: number) =>
   page(
     'Home',
-    `<div class="home">${brand(`${support(supportUrl)}<a class="btn ghost" href="${REPO}" target="_blank" rel="noopener noreferrer">GitHub</a><a class="btn ghost" href="/login">Log in</a>`)}
+    `<div class="home">${brand(`${support(supportUrl)}<a class="btn ghost gh" href="${REPO}" target="_blank" rel="noopener noreferrer">GitHub</a><a class="btn ghost" href="/login">Log in</a>`)}
 ${error ? `<div class="note err">${esc(error)}</div>` : ''}
 <h1>Your couch,<br>on autopilot.</h1>
 <p class="lead">Couchpilot turns Nuvio into a personal streaming home: rows built from what you actually watch, ranked by the AI of your choice, with better metadata than Cinemeta.</p>
@@ -601,6 +602,7 @@ ${tmdb ? '<label class="check"><input class="sw" type="checkbox" name="removeTmd
 <input type="password" name="rpdbKey" placeholder="${o.secrets.rpdbKey ? '••••••••' : 'e.g. t1-…'}" autocomplete="off" maxlength="100"></label>
 ${o.secrets.rpdbKey ? '<label class="check"><input class="sw" type="checkbox" name="removeRpdb" value="1">Delete saved key</label>' : ''}
 <label>Refresh rows<select name="refreshHours">${REFRESH_HOURS.map((h) => `<option value="${h}"${h === s.refreshHours ? ' selected' : ''}>every ${h} hour${h > 1 ? 's' : ''}</option>`).join('')}</select></label>
+${tmdb ? '' : '<div class="note small" style="margin-top:16px">Without a TMDB key Couchpilot uses Cinemeta metadata, just like Nuvio by default. Add a free key above to unlock localized titles and descriptions, cast, trailers, logos and episode thumbnails.</div><div hidden>'}
 <label>Metadata source<span>Detail pages and episodes. “Enhanced” keeps Cinemeta’s IMDb rating and episode IDs and adds TMDB on top. Needs the TMDB key.</span><select name="metaSource" id="metaSource">
 <option value="enhanced"${s.meta.source === 'enhanced' ? ' selected' : ''}>Enhanced (Cinemeta + TMDB)</option>
 <option value="cinemeta"${s.meta.source === 'cinemeta' ? ' selected' : ''}>Cinemeta only</option></select></label>
@@ -610,7 +612,7 @@ ${o.secrets.rpdbKey ? '<label class="check"><input class="sw" type="checkbox" na
 <label class="check"><input class="sw" type="checkbox" name="metaTrailers" value="1"${s.meta.trailers ? ' checked' : ''}>Trailers (YouTube)</label>
 <label class="check"><input class="sw" type="checkbox" name="metaEpisodes" value="1"${s.meta.episodes ? ' checked' : ''}>Episode thumbnails and plots</label>
 <p class="small muted" style="margin:6px 0 0">Always included: HD background, localized poster and title logo.</p>
-</div>
+</div>${tmdb ? '' : '</div>'}
 <label>Metadata language<select name="language">${Object.entries(LANGUAGES).map(([k, v]) => `<option value="${k}"${k === s.language ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
 <h3>Kids mode</h3>
 <label class="check"><input class="sw" type="checkbox" name="kidsOn" value="1"${s.kids.on ? ' checked' : ''}>Only show titles suitable for children in every row and in search</label>
