@@ -10,7 +10,7 @@ import { aiUsage, jobStatus, markQueued, runJob, startScheduler } from './person
 import { animeMapSize, checkTmdbKey, loadAnimeMap, type Type } from './sources.ts';
 import { apply, changes } from './diff.ts';
 import {
-  configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
+  cached, configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
   defaultProfileOf, ownSettings, rateLimit, redis, rootOf, rotateToken, saveSettings, sessionUser, updateSecrets, type AiProvider, type Secrets, type Settings,
 } from './store.ts';
 import { configPage, healthPage, homePage, imprintPage, LANGUAGES, OPERATOR, privacyPage, loginPage, REFRESH_HOURS, AI_LIMITS, TIMEZONES } from './web.ts';
@@ -125,7 +125,21 @@ async function login(res: Response, userId: string, to = '/configure', viaPasswo
 
 const page = (res: Response, html: (nonce: string) => string, status = 200) => void res.status(status).send(html(res.locals.nonce));
 
-app.get('/', (_req, res) => page(res, () => homePage(PUBLIC_URL, SUPPORT_URL)));
+// Usage numbers (aggregate only): profiles that installed the addon, accounts, active in the last 30 days
+const userStats = () =>
+  cached('stats:users', 600, async () => {
+    const { rows } = await db.query(
+      `select count(distinct coalesce(u.parent_id, u.id)) filter (where c.last_seen is not null)::int as accounts,
+              count(*) filter (where c.last_seen is not null)::int as profiles,
+              count(*) filter (where c.last_seen > now() - interval '30 days')::int as active
+       from users u join configs c on c.user_id = u.id`,
+    );
+    return rows[0] as { accounts: number; profiles: number; active: number };
+  });
+app.get('/', async (_req, res) => {
+  const stats = await userStats().catch(() => null);
+  page(res, () => homePage(PUBLIC_URL, SUPPORT_URL, undefined, stats?.profiles));
+});
 // ---------- Health / status page ----------
 // JSON for Docker and monitoring tools, a status page in the browser. Every minute the server marks itself
 // as up in a per-day Redis bitmap (one bit per minute), which gives the 30-day uptime history.
@@ -187,6 +201,7 @@ app.get('/health', async (req, res) => {
     startedAt: new Date(STARTED).toISOString(),
     memoryMb: Math.round(process.memoryUsage().rss / 1e6),
     jobsRunning: locks.length,
+    users: ok ? await userStats().catch(() => null) : null,
     animeTitles: animeMapSize(),
     checks: list,
     days,

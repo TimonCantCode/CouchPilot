@@ -115,3 +115,11 @@ test('similar search pattern and stable shuffle', () => {
   assert.deepEqual(a, mixUp(xs, 's', 3), 'same seed, same order');
   assert.notDeepEqual(a, mixUp(xs, 't', 3), 'new window, new order');
 });
+
+test('user count on the homepage is rounded down and hidden when small', async () => {
+  const { usersLabel } = await import('./web.ts');
+  assert.equal(usersLabel(7), null);
+  assert.equal(usersLabel(10), '10+');
+  assert.equal(usersLabel(137), '100+');
+  assert.equal(usersLabel(2600), '2,500+');
+});

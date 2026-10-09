@@ -131,6 +131,7 @@ details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}de
 .row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.danger{color:#ff8a8f;border-color:rgba(229,9,20,.45)}
 .foot{margin:40px 0 0;font-size:12px;color:var(--muted)}.foot p{margin:8px 0}.foot img{opacity:.8}
 .foot-links{display:flex;align-items:center;gap:14px;margin-top:10px}.legal h2{font-size:17px;margin-top:28px}.legal li{margin:6px 0}
+.users{margin:14px 0 0;color:var(--muted);font-size:14px}.users b{color:var(--text)}
 .foot-links a{color:var(--muted);text-decoration:none}.foot-links .push{margin-left:auto}.foot img.tmdb{height:14px;width:auto;display:block}.foot-links a:hover{color:var(--text)}
 .ic-link{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line)}.ic-link:hover{border-color:#55555f}
 /* Step layout: sidebar on desktop, drawer on phones, one step at a time when JS runs */
@@ -210,7 +211,12 @@ const brand = (extra = '') => `<div class="brand"><a href="/" class="home" aria-
 const previewRow = (name: string, hues: number[]) =>
   `<div class="pr"><b>${name}</b><div class="tiles">${hues.map((h) => `<span class="t" style="--h:${h}"></span>`).join('')}</div></div>`;
 
-export const homePage = (publicUrl: string, supportUrl?: string, error?: string) =>
+// "50+ people use Couchpilot": rounded down to a round number, hidden below 10
+export const usersLabel = (n = 0) => {
+  const step = [10000, 5000, 2500, 1000, 500, 250, 100, 50, 25, 10].find((s) => n >= s);
+  return step ? `${step.toLocaleString('en')}+` : null;
+};
+export const homePage = (publicUrl: string, supportUrl?: string, error?: string, users?: number) =>
   page(
     'Home',
     `<div class="home">${brand(`${support(supportUrl)}<a class="btn ghost" href="${REPO}" target="_blank" rel="noopener noreferrer">GitHub</a><a class="btn ghost" href="/login">Log in</a>`)}
@@ -218,6 +224,7 @@ ${error ? `<div class="note err">${esc(error)}</div>` : ''}
 <h1>Your couch,<br>on autopilot.</h1>
 <p class="lead">Couchpilot turns Nuvio into a personal streaming home: rows built from what you actually watch, ranked by the AI of your choice, with better metadata than Cinemeta.</p>
 <div class="cta"><form method="post" action="/start"><button>Configure now</button></form><a class="btn ghost" href="#how">How it works</a></div>
+${usersLabel(users) ? `<p class="users"><b>${usersLabel(users)}</b> Nuvio profiles already run on Couchpilot</p>` : ''}
 
 <div class="preview" aria-hidden="true">
 ${previewRow('Top Picks for You', [350, 210, 30, 280, 160, 5, 240, 120, 320])}
@@ -259,6 +266,7 @@ ${previewRow('Complete the Saga', [270, 300, 230, 330, 250, 290, 210, 310, 260])
 
 export type Health = {
   ok: boolean; version: string; uptimeSec: number; startedAt: string; memoryMb: number; jobsRunning: number; animeTitles: number;
+  users: { accounts: number; profiles: number; active: number } | null;
   checks: { name: string; ok: boolean; ms: number | null }[];
   days: { date: string; pct: number | null }[];
 };
@@ -280,6 +288,7 @@ export const healthPage = (h: Health) => {
 <div class="sec"><span class="muted small">Uptime since restart</span><b>${duration(h.uptimeSec)}</b><span class="muted small">since ${esc(h.startedAt.slice(0, 16).replace('T', ' '))} UTC</span></div>
 <div class="sec"><span class="muted small">Last 30 days</span><b>${avg === null ? '–' : `${avg.toFixed(2)} %`}</b><span class="muted small">available</span></div>
 <div class="sec"><span class="muted small">Background jobs</span><b>${h.jobsRunning}</b><span class="muted small">running now</span></div>
+${h.users ? `<div class="sec"><span class="muted small">Users</span><b>${h.users.profiles}</b><span class="muted small">profiles in ${h.users.accounts} accounts · ${h.users.active} active in 30 days</span></div>` : ''}
 </div>
 <section class="sec"><h3 style="margin-top:0">Uptime, last 30 days</h3>
 <div class="bars">${h.days.map((d) => `<span class="b ${bar(d.pct)}" title="${esc(d.date)}: ${d.pct === null ? 'no data' : `${d.pct.toFixed(2)} %`}"></span>`).join('')}</div>
