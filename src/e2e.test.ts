@@ -302,4 +302,25 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     assert.ok(ids.includes('tt1375666'), 'FSK 12 stays');
     assert.ok(!ids.includes('tt0110912'), 'FSK 16 + crime removed');
   });
+
+  test('rotating genres: daily genres from the chosen pool, named after the genre', async () => {
+    const form = cfgForm(await owner.page());
+    form.append('rows', 'cycle-1');
+    form.append('rows', 'cycle-2');
+    form.append('rows', 'cycle-3');
+    form.delete('cyclePool');
+    form.append('cyclePool', 'genre-comedy');
+    form.append('cyclePool', 'genre-docs');
+    form.set('cycleMode', 'random');
+    form.set('scope', 'this');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    const page = await owner.page();
+    assert.match(page, /value="genre-comedy" checked/);
+    assert.doesNotMatch(page, /value="genre-horror" checked/);
+    const m = await json(installUrl(page));
+    const names = m.catalogs.filter((c: any) => c.id.startsWith('cycle-')).map((c: any) => c.name).sort();
+    assert.deepEqual(names, ['Comedies', 'Documentaries'], 'two genres in the pool = two rows, third slot hidden');
+    const base = installUrl(page).replace('/manifest.json', '');
+    assert.equal((await fetch(`${base}/catalog/mixed/cycle-1.json`)).status, 200);
+  });
 });

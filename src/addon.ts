@@ -1,4 +1,4 @@
-import { aiSearch, ensureFresh, moodName, moodSlot, personalRow, watchedIds } from './personal.ts';
+import { aiSearch, ensureFresh, genreWeights, moodName, moodSlot, personalRow, userDay, watchedIds } from './personal.ts';
 import { ageFrom, anilistList, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
 import { cached, configByUser, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
@@ -13,6 +13,7 @@ type Row = {
   dynamicTitle?: boolean; // title comes from the job (Because You Watched X, genre mix)
   needsTmdb?: boolean;
   parts?: [string, string]; // mixed row: movie and series row, alternating
+  genres?: number[]; // genre rows: TMDB genre ids (movie, tv)
   fetch?: (ctx: Ctx, page: number) => Promise<Meta[]>;
 };
 
@@ -61,6 +62,7 @@ const genreRow = (name: string, movie: number, tv?: number): Row => ({
   type: tv ? 'mixed' : 'movie',
   name,
   group: GENRES,
+  genres: tv ? [movie, tv] : [movie],
   needsTmdb: true,
   fetch: async (ctx, page) => {
     if (!ctx.tmdbKey) throw new Error('no TMDB key');
@@ -72,6 +74,41 @@ const genreRow = (name: string, movie: number, tv?: number): Row => ({
     return interleave(a, b);
   },
 });
+
+// Rotating genre rows: each day up to 3 genres from the user's pool, weighted by watch history or random.
+// Seeded with user + day, so the pick stays the same all day and changes at midnight.
+const CYCLE_SLOTS = 3;
+const cycleRow = (n: number): Row => ({ type: 'mixed', name: `Rotating Genre ${n}`, group: GENRES, needsTmdb: true });
+const seeded = (seed: string) => {
+  let h = 2166136261;
+  for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909)) >>> 0) / 4294967296;
+};
+// Weighted sample without replacement
+export function pickGenres(pool: string[], weight: (id: string) => number, seed: string, n = CYCLE_SLOTS): string[] {
+  const rnd = seeded(seed);
+  const left = [...pool];
+  const out: string[] = [];
+  while (out.length < n && left.length) {
+    const ws = left.map(weight);
+    let r = rnd() * ws.reduce((a, b) => a + b, 0);
+    const i = Math.max(0, ws.findIndex((w) => (r -= w) < 0));
+    out.push(...left.splice(i, 1));
+  }
+  return out;
+}
+async function cycleGenres(ctx: Ctx): Promise<string[]> {
+  const s = ctx.settings;
+  const c = s.genreCycle ?? DEFAULT_SETTINGS.genreCycle;
+  const blocked = new Set(s.kids?.on ? s.kids.blockGenres.flatMap((g) => KID_GENRES[g] ?? []) : []);
+  // Genres already shown as their own row are left out, so nothing appears twice
+  const pool = Object.keys(ROWS).filter((id) => ROWS[id].genres && (!c.pool.length || c.pool.includes(id)) && !isOn(id, s) && !blocked.has(ROWS[id].genres![0]));
+  const w = c.mode === 'history' && ctx.userId ? await genreWeights(ctx.userId) : {};
+  const max = Math.max(1, ...Object.values(w));
+  const weight = (id: string) => 1 + (8 * Math.max(...ROWS[id].genres!.map((g) => w[g] ?? 0))) / max;
+  return pickGenres(pool, weight, `${ctx.userId}:${userDay(s.timezone)}`);
+}
+const cycleIndex = (id: string) => (id.startsWith('cycle-') ? Number(id.slice(6)) - 1 : -1);
 
 // Seasonal row: Halloween horror in October, Christmas movies in December, hidden the rest of the year
 export const season = (now = new Date()) => (now.getMonth() === 9 ? 'halloween' : now.getMonth() === 11 ? 'christmas' : null);
@@ -132,6 +169,9 @@ export const ROWS: Record<string, Row> = {
   'genre-mystery': genreRow('Mystery', 9648, 9648),
   'genre-family': genreRow('Family', 10751, 10751),
   'genre-docs': genreRow('Documentaries', 99, 99),
+  'cycle-1': cycleRow(1),
+  'cycle-2': cycleRow(2),
+  'cycle-3': cycleRow(3),
   'foryou-anime': { ...personal('series', 'Anime Picks for You'), group: 'Anime', needsTmdb: false },
   'anime-trending': animeRow('series', 'Trending Anime', () => ({ sort: ['TRENDING_DESC'], format: 'TV' })),
   'anime-season': animeRow('series', "This Season's Anime", () => ({ sort: ['POPULARITY_DESC'], ...currentSeason() })),
@@ -183,6 +223,9 @@ const DE: Record<string, string> = {
   'genre-mystery': 'Mystery',
   'genre-family': 'Familie',
   'genre-docs': 'Dokus',
+  'cycle-1': 'Wechselndes Genre 1',
+  'cycle-2': 'Wechselndes Genre 2',
+  'cycle-3': 'Wechselndes Genre 3',
   'foryou-anime': 'Anime-Empfehlungen für dich',
   'anime-trending': 'Angesagte Anime',
   'anime-season': 'Anime dieser Season',
@@ -217,6 +260,10 @@ async function rowName(id: string, ctx: Ctx): Promise<string> {
     if (id.startsWith('because-')) return title ? (de ? `Weil du ${title} geschaut hast` : `Because You Watched ${title}`) : defaultName(id, ctx.settings.language);
     if (title) return title;
   }
+  if (cycleIndex(id) >= 0) {
+    const g = (await cycleGenres(ctx))[cycleIndex(id)];
+    if (g) return rowName(g, ctx);
+  }
   if (id === 'mood-movie') return moodName(moodSlot(ctx.settings.timezone), ctx.settings.language);
   const s = id === 'seasonal-movie' ? season() : null;
   if (s) return SEASON_NAMES[s][ctx.settings.language.startsWith('de') ? 1 : 0];
@@ -226,11 +273,12 @@ async function rowName(id: string, ctx: Ctx): Promise<string> {
 const usable = (id: string, ctx: Ctx) => {
   const row = ROWS[id];
   if (id === 'seasonal-movie' && !season()) return false;
-  return isOn(id, ctx.settings) && (!row.personal || !!ctx.userId) && (!row.needsTmdb || !!ctx.tmdbKey);
+  return isOn(id, ctx.settings) && (!(row.personal || cycleIndex(id) >= 0) || !!ctx.userId) && (!row.needsTmdb || !!ctx.tmdbKey);
 };
 
 export async function manifest(ctx: Ctx) {
-  const ids = orderedRowIds(ctx.settings).filter((id) => usable(id, ctx));
+  const picks = await cycleGenres(ctx);
+  const ids = orderedRowIds(ctx.settings).filter((id) => usable(id, ctx) && (cycleIndex(id) < 0 || !!picks[cycleIndex(id)]));
   const search = ctx.settings.language.startsWith('de') ? 'Suche' : 'Search';
   const catalogs = await Promise.all(ids.map(async (id) => ({ type: ROWS[id].type, id, name: await rowName(id, ctx), extra: [{ name: 'skip' }] })));
   return {
@@ -253,6 +301,10 @@ export async function manifest(ctx: Ctx) {
 // Alternate movie, series, movie, … without duplicates
 
 async function rowMetas(id: string, ctx: Ctx, page: number): Promise<Meta[]> {
+  if (cycleIndex(id) >= 0) {
+    const g = (await cycleGenres(ctx))[cycleIndex(id)];
+    return g ? rowMetas(g, ctx, page) : [];
+  }
   const row = ROWS[id];
   if (row.parts) {
     const [a, b] = await Promise.all(row.parts.map((p) => rowMetas(p, ctx, page)));

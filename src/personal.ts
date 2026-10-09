@@ -146,6 +146,7 @@ async function work(userId: string, progress: (s: string) => Promise<unknown>, s
       await progress(`Top Picks (${type === 'movie' ? 'movies' : 'series'}), ${history.length} titles in history`);
       pools[type] = await step(ctx, `Top Picks ${type}`, () => buildType(ctx, history, type), []);
     }
+    await step(ctx, 'genre weights', () => saveGenreWeights(userId, pools), null);
     await progress('genre mixes');
     await step(ctx, 'genre mixes', () => buildMixes(ctx, history, pools), null);
     await progress('new episodes');
@@ -187,7 +188,7 @@ const isDe = (ctx: JobCtx) => ctx.lang.startsWith('de');
 const noTags = (t: string) => t.replace(/[<>]/g, ' ');
 
 // Calendar day in the user's timezone: the AI limits reset at their midnight, not 24 h after the first call
-const userDay = (tz: string) => {
+export const userDay = (tz: string) => {
   try {
     return new Date().toLocaleDateString('sv', { timeZone: tz });
   } catch {
@@ -329,6 +330,15 @@ async function aiRank(ctx: JobCtx, hist: Watch[], candidates: Meta[], type: Type
     return reasons && why ? { ...m, description: `${why}\n\n${m.description ?? ''}`.trim() } : m;
   });
 }
+
+// How often each TMDB genre appears in the taste pools, for the rotating genre rows
+async function saveGenreWeights(userId: string, pools: Partial<Record<Type, any[]>>) {
+  const count: Record<string, number> = {};
+  for (const r of [...(pools.movie ?? []), ...(pools.series ?? [])]) for (const g of r.genre_ids ?? []) count[g] = (count[g] ?? 0) + 1;
+  const k = `pers:genres:${userId}`;
+  if (Object.keys(count).length) await redis.multi().del(k).hset(k, count).expire(k, 30 * 86400).exec();
+}
+export const genreWeights = async (userId: string) => Object.fromEntries(Object.entries(await redis.hgetall(`pers:genres:${userId}`)).map(([g, n]) => [g, Number(n)]));
 
 // ---------- Genre-Mixes ("Dark Sci-Fi Thrillers") ----------
 

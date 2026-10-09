@@ -324,6 +324,12 @@ app.get('/configure', auth, async (req, res) => {
 });
 
 const list = (v: unknown) => ([] as unknown[]).concat(v ?? []).map(String);
+// Rotating genres: only real genre rows; all (or none) ticked = [] = every genre, so new genres join automatically
+const GENRE_IDS = Object.keys(ROWS).filter((id) => ROWS[id].genres);
+const cycleSettings = (mode: unknown, pool: string[]): Settings['genreCycle'] => {
+  const ids = GENRE_IDS.filter((id) => pool.includes(id));
+  return { mode: mode === 'random' ? 'random' : 'history', pool: ids.length === GENRE_IDS.length ? [] : ids };
+};
 const VALID_TZ = new Set(TIMEZONES);
 
 // Give a profile its own copy of the shared settings and keys (it no longer follows the default profile)
@@ -413,6 +419,7 @@ app.post('/configure', auth, async (req, res) => {
     aiPrompt: field(b.aiPrompt).slice(0, 500),
     aiReasons: b.aiReasons === '1',
     hideWatched: b.hideWatched === '1',
+    genreCycle: cycleSettings(b.cycleMode, list(b.cyclePool)),
     aiDailyLimit: AI_LIMITS.includes(Number(b.aiDailyLimit)) ? Number(b.aiDailyLimit) : DEFAULT_SETTINGS.aiDailyLimit,
     aiSearch: b.aiSearch === '1',
     kids: {
@@ -500,7 +507,7 @@ app.post('/export', auth, async (req, res) => {
     exportedAt: new Date().toISOString(),
     settings: {
       rows: s.rows, order: s.order, names: s.names, refreshHours: s.refreshHours, language: s.language, timezone: s.timezone,
-      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, customRows: s.customRows, aiSearch: s.aiSearch, aiDailyLimit: s.aiDailyLimit, kids: s.kids,
+      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, customRows: s.customRows, aiSearch: s.aiSearch, aiDailyLimit: s.aiDailyLimit, genreCycle: s.genreCycle, kids: s.kids,
     },
   };
   // Keys only on request; Nuvio/Trakt/Simkl logins are never exported (rotating tokens must exist only once)
@@ -551,6 +558,7 @@ app.post('/import', auth, async (req, res) => {
     },
     anilistUser: /^[A-Za-z0-9_-]{2,20}$/.test(anilist) ? anilist : '',
     hideWatched: i.hideWatched !== false,
+    genreCycle: cycleSettings(i.genreCycle?.mode, Array.isArray(i.genreCycle?.pool) ? i.genreCycle.pool.map(String) : []),
     aiDailyLimit: AI_LIMITS.includes(Number(i.aiDailyLimit)) ? Number(i.aiDailyLimit) : DEFAULT_SETTINGS.aiDailyLimit,
     aiSearch: i.aiSearch !== false,
     kids: {

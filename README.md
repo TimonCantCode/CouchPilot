@@ -9,7 +9,7 @@ Your couch, on autopilot: an unofficial Cinemeta replacement for Nuvio with pers
 ## Features
 
 - **Standard rows:** Trending, Popular, New, Top Rated for movies and series (TMDB), anime via AniList.
-- **Genre rows:** Action & Adventure, Comedies, Sci-Fi & Fantasy, Horror, Thrillers, Crime, Dramas, Romance, Mystery, Family, Documentaries. Popular titles, movies and series alternating, off by default.
+- **Genre rows:** Action & Adventure, Comedies, Sci-Fi & Fantasy, Horror, Thrillers, Crime, Dramas, Romance, Mystery, Family, Documentaries. Popular titles, movies and series alternating, off by default. Plus up to 3 rotating genre rows that switch genre every day, picked at random or weighted by your watch history, from the genres you choose.
 - **Mix rows:** movies and series in one row ("Trending Now", "Top Picks for You" …). Nuvio opens every item with its own type.
 - **For You** (★): Complete the Saga (next part of film series you started), More from … (your most-watched director or actor), Coming Soon (upcoming movies in your genres + new seasons/episodes of your shows), up to 3 own AI rows from a text prompt (“cozy 90s sci-fi”), plus Top Picks, Because You Watched X, new episodes of your shows, genre mixes with AI titles, a time-of-day row (feel-good during the day, late night thrills, weekend movie night) and anime picks.
 - **History sources:** Nuvio Sync, Trakt, Simkl, AniList (public list by username). Read-only.

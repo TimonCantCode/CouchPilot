@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, discover, isOn, orderedRowIds, ROWS, season } from './addon.ts';
+import { defaultName, discover, isOn, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
 import { parseItems } from './ai.ts';
 import { ageFrom, trailerFrom } from './sources.ts';
 import { DEFAULT_SETTINGS } from './store.ts';
@@ -88,4 +88,17 @@ test('genre rows: off by default, anime left out, family keeps animation', () =>
   assert.equal(ROWS['genre-horror'].type, 'movie'); // TMDB has no TV horror genre
   assert.match(discover('series', 35), /^\/discover\/tv\?with_genres=35&without_genres=16&/);
   assert.doesNotMatch(discover('movie', 10751), /without_genres/);
+});
+
+test('rotating genres: same pick all day, distinct, history-weighted', () => {
+  const pool = ['genre-action', 'genre-comedy', 'genre-horror', 'genre-docs', 'genre-drama'];
+  const a = pickGenres(pool, () => 1, 'u1:2026-10-09');
+  assert.deepEqual(a, pickGenres(pool, () => 1, 'u1:2026-10-09'), 'stable within a day');
+  assert.equal(new Set(a).size, 3);
+  assert.ok(a.every((g) => pool.includes(g)));
+  assert.deepEqual(pickGenres(['genre-docs'], () => 1, 'x'), ['genre-docs'], 'fewer genres than slots');
+  // a genre with weight 9 vs 1 should lead most days
+  const days = Array.from({ length: 200 }, (_, d) => pickGenres(pool, (id) => (id === 'genre-horror' ? 9 : 1), `u1:${d}`, 1)[0]);
+  assert.ok(days.filter((g) => g === 'genre-horror').length > 100, 'liked genre comes up more often');
+  assert.ok(new Set(days).size > 1, 'others still come up');
 });

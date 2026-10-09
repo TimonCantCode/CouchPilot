@@ -86,6 +86,7 @@ export type Settings = {
   aiDailyLimit: number; // max. AI calls per day for this profile, protects the key if the install URL leaks
   aiSearch: boolean; // Nuvio search also understands descriptions ("the movie with the dream in a dream")
   kids: { on: boolean; maxAge: number; blockGenres: string[] }; // kids mode: age limit + blocked genres in every row
+  genreCycle: { mode: 'history' | 'random'; pool: string[] }; // rotating genre rows: daily pick, weighted by history or random; pool [] = all genres
   customRows: { prompt: string }[]; // own AI rows ("cozy 90s sci-fi"), up to 3
   inherit: boolean; // profile follows the default profile's settings (history stays its own)
   defaultProfile: string; // only on the main profile: which profile is the default ('' = main profile)
@@ -116,6 +117,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aiDailyLimit: 40,
   aiSearch: true,
   kids: { on: false, maxAge: 12, blockGenres: ['horror', 'thriller', 'crime', 'war'] },
+  genreCycle: { mode: 'history', pool: [] },
   customRows: [],
   inherit: true,
   defaultProfile: '',

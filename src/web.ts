@@ -482,6 +482,11 @@ ${scopeNote}
 <div class="rows" id="rowmore">${moreRows.map(rowHtml).join('')}</div></details>
 ${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for this profile’s “For You” rows<select name="nuvioProfile">${s.nuvioProfiles.map((p) => `<option value="${p.index}"${p.index === s.nuvioProfile ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
 <label class="check"><input class="sw" type="checkbox" name="hideWatched" value="1"${s.hideWatched ? ' checked' : ''}>Hide titles this profile has already watched in Trending, Popular, New and the other standard rows</label>
+<h3>Rotating genres</h3>
+<p class="small muted" style="margin:0">Switch on “Rotating Genre 1–3” in the rows above. Every day they show different genres from your selection. Genres you already have as their own row are skipped.</p>
+<label>How to pick<select name="cycleMode"><option value="history"${s.genreCycle.mode === 'history' ? ' selected' : ''}>Weighted by your watch history (genres you like come up more often)</option><option value="random"${s.genreCycle.mode === 'random' ? ' selected' : ''}>Random</option></select></label>
+<p class="small muted" style="margin:12px 0 4px">Genres to rotate</p>
+<div class="chips">${Object.keys(ROWS).filter((id) => ROWS[id].genres).map((id) => `<label class="check"><input class="sw" type="checkbox" name="cyclePool" value="${id}"${!s.genreCycle.pool.length || s.genreCycle.pool.includes(id) ? ' checked' : ''}>${esc(defaultName(id, s.language))}</label>`).join('')}</div>
 <h3>Your own AI rows</h3>
 <p class="small muted" style="margin:0">Describe a row and the AI fills it with movies and shows that fit, e.g. “cozy 90s sci-fi” or “like Interstellar but shorter”. Needs an AI provider (step 3). Empty = row off.</p>
 ${[1, 2, 3].map((n) => `<label>AI row ${n}<input type="text" name="custom${n}" maxlength="150" value="${esc(s.customRows[n - 1]?.prompt ?? '')}" placeholder="${['e.g. cozy 90s sci-fi', 'e.g. mind-bending thrillers like Inception', 'e.g. short comedies under 100 minutes'][n - 1]}"></label>`).join('')}
