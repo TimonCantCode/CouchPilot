@@ -54,6 +54,7 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
     if (path.startsWith('/genre/')) return J({ genres: [{ id: 28, name: 'Action' }, { id: 80, name: 'Crime' }, { id: 18, name: 'Drama' }] });
     if (path.startsWith('/search/movie')) return J({ results: [{ id: 27205, title: 'Inception', genre_ids: [878] }] });
     if (path.startsWith('/search/tv')) return J({ results: [{ id: 1396, name: 'Breaking Bad', genre_ids: [18] }] });
+    if (path.startsWith('/discover/movie') && u.includes('with_runtime.lte=90')) return J({ results: [155, ...Array.from({ length: 11 }, (_, i) => 9000 + i)].map((id) => ({ id, title: 'S' + id, genre_ids: [35] })) });
     if (path.startsWith('/trending/movie')) return J({ results: [27205, 155, 680].map((id) => ({ id, title: 'M' + id, genre_ids: GENRES[id] ?? [878] })) });
     if (/\/recommendations$/.test(path)) return J({ results: [{ id: 155, title: 'The Dark Knight', genre_ids: [28] }, { id: 680, title: 'Pulp Fiction', genre_ids: [80] }] });
     if ((m = path.match(/^\/(movie|tv)\/(\d+)$/))) {
@@ -61,7 +62,7 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
       const rating = AGE[id] ?? '12';
       return J({
         id, title: 'T' + id, name: 'T' + id, genres: (GENRES[id] ?? [18]).map((g) => ({ id: g })),
-        external_ids: { imdb_id: IMDB[id] ?? null },
+        external_ids: { imdb_id: IMDB[id] ?? (id >= 9000 ? `tt${id}` : null) },
         videos: { results: [{ site: 'YouTube', type: 'Trailer', key: 'yt' + id, iso_639_1: 'en', official: true }] },
         release_dates: { results: [{ iso_3166_1: 'DE', release_dates: [{ certification: rating }] }] },
         content_ratings: { results: [{ iso_3166_1: 'DE', rating }] },
@@ -327,6 +328,24 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     assert.deepEqual(names, ['Comedies', 'Documentaries'], 'two genres in the pool = two rows, third slot hidden');
     const base = installUrl(page).replace('/manifest.json', '');
     assert.equal((await fetch(`${base}/catalog/mixed/cycle-1.json`)).status, 200);
+  });
+
+  test('context row "Under 90 Minutes", no title twice on the home screen', async () => {
+    const form = cfgForm(await owner.page());
+    form.append('rows', 'ctx-short');
+    form.delete('kidsOn'); // kids mode needs TMDB lookups the mock does not have for these titles
+    form.set('scope', 'this');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    const page = await owner.page();
+    const m = await json(installUrl(page));
+    const ids = m.catalogs.map((c: any) => c.id);
+    assert.ok(ids.indexOf('ctx-short') > ids.indexOf('trending-movie'), 'appended after the standard rows');
+    const base = installUrl(page).replace('/manifest.json', '');
+    const trending = (await json(`${base}/catalog/movie/trending-movie.json`)).metas.map((x: any) => x.id);
+    assert.ok(trending.includes('tt0468569'));
+    const short = (await json(`${base}/catalog/movie/ctx-short.json`)).metas.map((x: any) => x.id);
+    assert.equal(short.length, 11, 'The Dark Knight is already in Trending, so it is left out here');
+    assert.ok(!short.includes('tt0468569'));
   });
 
   test('search "like X" returns similar titles without an AI call', async () => {

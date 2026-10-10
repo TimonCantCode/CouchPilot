@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, discover, isOn, LIKE, mixUp, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
+import { defaultName, discover, GEMS_PATHS, isOn, SHORT_PATH, LIKE, mixUp, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
 import { parseItems } from './ai.ts';
 import { ageFrom, trailerFrom } from './sources.ts';
 import { DEFAULT_SETTINGS } from './store.ts';
@@ -122,4 +122,12 @@ test('user count on the homepage is rounded down and hidden when small', async (
   assert.equal(usersLabel(10), '10+');
   assert.equal(usersLabel(137), '100+');
   assert.equal(usersLabel(2600), '2,500+');
+});
+
+test('context rows: short movies and hidden gems, off by default', () => {
+  assert.match(SHORT_PATH, /with_runtime\.lte=90/);
+  assert.ok(GEMS_PATHS.every((p) => /vote_count\.lte=\d+/.test(p) && /vote_average\.gte=/.test(p)));
+  assert.equal(ROWS['ctx-gems'].type, 'mixed');
+  assert.equal(defaultName('ctx-short', 'de-DE'), 'Unter 90 Minuten');
+  assert.equal(isOn('ctx-gems', DEFAULT_SETTINGS), false);
 });

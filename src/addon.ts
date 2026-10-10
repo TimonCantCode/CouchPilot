@@ -58,22 +58,32 @@ const interleave = (a: Meta[], b: Meta[]) => {
 const GENRES = 'Genres';
 export const discover = (type: Type, genre: number) =>
   `/discover/${type === 'movie' ? 'movie' : 'tv'}?with_genres=${genre}${genre === 10751 ? '' : '&without_genres=16'}&sort_by=popularity.desc&vote_count.gte=${type === 'movie' ? 300 : 100}`;
-const genreRow = (name: string, movie: number, tv?: number): Row => ({
-  type: tv ? 'mixed' : 'movie',
+// One TMDB discover query per type, movies and series alternating
+const discoverRow = (name: string, group: string, moviePath: string, tvPath?: string): Row => ({
+  type: tvPath ? 'mixed' : 'movie',
   name,
-  group: GENRES,
-  genres: tv ? [movie, tv] : [movie],
+  group,
   needsTmdb: true,
   fetch: async (ctx, page) => {
     if (!ctx.tmdbKey) throw new Error('no TMDB key');
     const { language } = ctx.settings;
     const [a, b] = await Promise.all([
-      tmdbList(discover('movie', movie), 'movie', ctx.tmdbKey, page, language),
-      tv ? tmdbList(discover('series', tv), 'series', ctx.tmdbKey, page, language) : [],
+      tmdbList(moviePath, 'movie', ctx.tmdbKey, page, language),
+      tvPath ? tmdbList(tvPath, 'series', ctx.tmdbKey, page, language) : [],
     ]);
     return interleave(a, b);
   },
 });
+const genreRow = (name: string, movie: number, tv?: number): Row => ({
+  ...discoverRow(name, GENRES, discover('movie', movie), tv ? discover('series', tv) : undefined),
+  genres: tv ? [movie, tv] : [movie],
+});
+// Context rows: short movies for a weeknight, well rated titles few people know (no anime, docs, reality or talk shows)
+export const SHORT_PATH = '/discover/movie?with_runtime.gte=60&with_runtime.lte=90&without_genres=16,99&vote_count.gte=300&sort_by=popularity.desc';
+export const GEMS_PATHS = [
+  '/discover/movie?vote_average.gte=7.3&vote_count.gte=150&vote_count.lte=2000&without_genres=16,99&sort_by=popularity.desc',
+  '/discover/tv?vote_average.gte=7.8&vote_count.gte=50&vote_count.lte=800&without_genres=16,99,10764,10767&sort_by=popularity.desc',
+];
 
 // Rotating genre rows: each day up to 3 genres from the user's pool, weighted by watch history or random.
 // Seeded with user + day, so the pick stays the same all day and changes at midnight.
@@ -211,6 +221,8 @@ export const ROWS: Record<string, Row> = {
   'genre-mystery': genreRow('Mystery', 9648, 9648),
   'genre-family': genreRow('Family', 10751, 10751),
   'genre-docs': genreRow('Documentaries', 99, 99),
+  'ctx-short': discoverRow('Under 90 Minutes', 'Movies', SHORT_PATH),
+  'ctx-gems': discoverRow('Hidden Gems', 'Mixed (movies + series)', GEMS_PATHS[0], GEMS_PATHS[1]),
   'cycle-1': cycleRow(1),
   'cycle-2': cycleRow(2),
   'cycle-3': cycleRow(3),
@@ -270,6 +282,8 @@ const DE: Record<string, string> = {
   'genre-mystery': 'Mystery',
   'genre-family': 'Familie',
   'genre-docs': 'Dokus',
+  'ctx-short': 'Unter 90 Minuten',
+  'ctx-gems': 'Versteckte Perlen',
   'cycle-1': 'Wechselndes Genre 1',
   'cycle-2': 'Wechselndes Genre 2',
   'cycle-3': 'Wechselndes Genre 3',
@@ -384,6 +398,19 @@ async function rowMetas(id: string, ctx: Ctx, page: number): Promise<Meta[]> {
   return metas.filter((m) => !seen.has(m.id));
 }
 
+// Netflix-like: on the home screen (page 1) a title only shows in the first row it appears in.
+// Earlier rows come from the same cache Nuvio fills when it loads them, so this is mostly Redis reads.
+// ponytail: O(rows²) reads per home screen, store a per-user "shown" set if that ever shows up in latency
+export async function dedupe(id: string, ctx: Ctx, metas: Meta[]): Promise<Meta[]> {
+  const ids = orderedRowIds(ctx.settings).filter((r) => usable(r, ctx));
+  const i = ids.indexOf(id);
+  if (i <= 0) return metas;
+  const earlier = await Promise.all(ids.slice(0, i).map((r) => rowMetas(r, ctx, 1).catch(() => [] as Meta[])));
+  const seen = new Set(earlier.flat().map((m) => m.id));
+  const rest = metas.filter((m) => !seen.has(m.id));
+  return rest.length >= 8 ? rest : metas; // a near-empty row looks broken, keep the duplicates then
+}
+
 export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSearchParams) {
   if (ctx.userId) void touchSeen(ctx.userId);
   if (id === 'search') {
@@ -405,6 +432,7 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   const page = Math.round(Number(extra.get('skip') ?? 0) / 20) + 1;
   if (!(page >= 1 && page <= 25)) return { metas: [] };
   let metas = await rowMetas(id, ctx, page);
+  if (page === 1) metas = await dedupe(id, ctx, metas);
   if (ctx.settings.shuffle && ctx.userId && (row.personal || row.genres || cycleIndex(id) >= 0) && !KEEP_ORDER.has(id))
     metas = mixUp(metas, `${ctx.userId}:${id}:${page}:${Math.floor(Date.now() / (6 * 3600_000))}`, row.personal ? 3 : 0);
   return { metas: ratingPosters(await kidsFilter(metas, ctx), ctx), cacheMaxAge: row.personal ? 600 : 3600 };
