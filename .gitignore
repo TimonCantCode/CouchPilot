@@ -4,3 +4,4 @@ secrets/
 backups/
 AGENTS.md
 CLAUDE.md
+"public/*.exe" 
