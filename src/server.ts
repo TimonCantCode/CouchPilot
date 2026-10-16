@@ -13,7 +13,7 @@ import {
   cached, count, counts, configByToken, configByUser, createSession, db, DEFAULT_SETTINGS, destroyAllSessions, destroySession, migrate, profilesOf, purgeUser,
   defaultProfileOf, ownSettings, rateLimit, redis, rootOf, rotateToken, saveSettings, sessionUser, updateSecrets, type AiProvider, type Secrets, type Settings,
 } from './store.ts';
-import { configPage, healthPage, homePage, imprintPage, LANGUAGES, OPERATOR, privacyPage, loginPage, REFRESH_HOURS, AI_LIMITS, TIMEZONES } from './web.ts';
+import { configPage, healthPage, homePage, imprintPage, LANGUAGES, OPERATOR, privacyPage, loginPage, REFRESH_HOURS, SHUFFLE_HOURS, AI_LIMITS, TIMEZONES } from './web.ts';
 
 const PORT = Number(process.env.PORT ?? 7000);
 const PUBLIC_URL = (process.env.PUBLIC_URL ?? `http://localhost:${PORT}`).replace(/\/$/, '');
@@ -75,7 +75,8 @@ app.get(RESOURCE_RE, addonGuard, async (req, res) => {
       if (type === 'mixed') return void res.json({ meta: null });
       return void res.set('Cache-Control', 'max-age=3600').json(await meta(type as Type, id, ctx));
     }
-    res.set('Cache-Control', 'max-age=900').json(await catalog(ctx, type as RowType, id, new URLSearchParams(rawExtra ?? '')));
+    const out = await catalog(ctx, type as RowType, id, new URLSearchParams(rawExtra ?? ''));
+    res.set('Cache-Control', `max-age=${Math.min(900, out.cacheMaxAge ?? 900)}`).json(out);
   } catch (err) {
     console.error(`${resource} ${type} ${id}:`, (err as Error).message);
     res.json(resource === 'meta' ? { meta: null } : { metas: [] }); // the app should never break
@@ -456,7 +457,8 @@ app.post('/configure', auth, async (req, res) => {
     aiPrompt: field(b.aiPrompt).slice(0, 500),
     aiReasons: b.aiReasons === '1',
     hideWatched: b.hideWatched === '1',
-    shuffle: b.shuffle === '1',
+    shuffle: b.shuffleEvery !== 'off',
+    shuffleHours: SHUFFLE_HOURS.includes(Number(b.shuffleEvery)) ? Number(b.shuffleEvery) : DEFAULT_SETTINGS.shuffleHours,
     genreCycle: cycleSettings(b.cycleMode, list(b.cyclePool)),
     aiDailyLimit: AI_LIMITS.includes(Number(b.aiDailyLimit)) ? Number(b.aiDailyLimit) : DEFAULT_SETTINGS.aiDailyLimit,
     aiSearch: b.aiSearch === '1',
@@ -553,7 +555,7 @@ app.post('/export', auth, async (req, res) => {
     exportedAt: new Date().toISOString(),
     settings: {
       rows: s.rows, order: s.order, names: s.names, refreshHours: s.refreshHours, language: s.language, timezone: s.timezone,
-      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, shuffle: s.shuffle, customRows: s.customRows, aiSearch: s.aiSearch, aiDailyLimit: s.aiDailyLimit, genreCycle: s.genreCycle, kids: s.kids,
+      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, shuffle: s.shuffle, shuffleHours: s.shuffleHours,customRows: s.customRows, aiSearch: s.aiSearch, aiDailyLimit: s.aiDailyLimit, genreCycle: s.genreCycle, kids: s.kids,
     },
   };
   // Keys only on request; Nuvio/Trakt/Simkl logins are never exported (rotating tokens must exist only once)
@@ -605,6 +607,7 @@ app.post('/import', auth, async (req, res) => {
     anilistUser: /^[A-Za-z0-9_-]{2,20}$/.test(anilist) ? anilist : '',
     hideWatched: i.hideWatched !== false,
     shuffle: i.shuffle !== false,
+    shuffleHours: SHUFFLE_HOURS.includes(Number(i.shuffleHours)) ? Number(i.shuffleHours) : DEFAULT_SETTINGS.shuffleHours,
     genreCycle: cycleSettings(i.genreCycle?.mode, Array.isArray(i.genreCycle?.pool) ? i.genreCycle.pool.map(String) : []),
     aiDailyLimit: AI_LIMITS.includes(Number(i.aiDailyLimit)) ? Number(i.aiDailyLimit) : DEFAULT_SETTINGS.aiDailyLimit,
     aiSearch: i.aiSearch !== false,

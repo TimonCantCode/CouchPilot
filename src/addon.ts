@@ -120,9 +120,9 @@ async function cycleGenres(ctx: Ctx): Promise<string[]> {
 }
 // Today's genre name per rotating slot, for the config page
 export const cycleToday = async (ctx: Ctx) => Promise.all((await cycleGenres(ctx)).map((g) => rowName(g, ctx)));
-// Variety: personal and genre rows are reshuffled every 6 hours, the first picks stay on top.
-// Seeded, so all pages and repeated loads within the window agree. Date-ordered rows keep their order.
-const KEEP_ORDER = new Set(['upcoming', 'new-episodes', 'saga-movie']);
+// Variety: every row is reshuffled on each load (= app start) or every n hours, the first personal picks stay on top.
+// Timed mode is seeded, so all pages and repeated loads within the window agree. Date-ordered rows keep their order.
+const KEEP_ORDER = new Set(['upcoming', 'new-episodes', 'saga-movie', 'anime-new', 'anime-movies-new']);
 export function mixUp<T>(items: T[], seed: string, keep: number): T[] {
   const rnd = seeded(seed);
   const rest = items.slice(keep);
@@ -411,7 +411,7 @@ export async function dedupe(id: string, ctx: Ctx, metas: Meta[]): Promise<Meta[
   return rest.length >= 8 ? rest : metas; // a near-empty row looks broken, keep the duplicates then
 }
 
-export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSearchParams) {
+export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSearchParams): Promise<{ metas: Meta[]; cacheMaxAge?: number }> {
   if (ctx.userId) void touchSeen(ctx.userId);
   if (id === 'search') {
     const q = extra.get('search')?.trim().slice(0, 100);
@@ -433,9 +433,12 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   if (!(page >= 1 && page <= 25)) return { metas: [] };
   let metas = await rowMetas(id, ctx, page);
   if (page === 1) metas = await dedupe(id, ctx, metas);
-  if (ctx.settings.shuffle && ctx.userId && (row.personal || row.genres || cycleIndex(id) >= 0) && !KEEP_ORDER.has(id))
-    metas = mixUp(metas, `${ctx.userId}:${id}:${page}:${Math.floor(Date.now() / (6 * 3600_000))}`, row.personal ? 3 : 0);
-  return { metas: ratingPosters(await kidsFilter(metas, ctx), ctx), cacheMaxAge: row.personal ? 600 : 3600 };
+  const { shuffle, shuffleHours } = ctx.settings;
+  const everyLoad = shuffle && !shuffleHours && !KEEP_ORDER.has(id);
+  if (shuffle && !KEEP_ORDER.has(id))
+    metas = mixUp(metas, everyLoad ? String(Math.random()) : `${ctx.userId ?? 'public'}:${id}:${page}:${Math.floor(Date.now() / (shuffleHours * 3600_000))}`, row.personal ? 3 : 0);
+  // "every app start": no client caching, so each fresh load gets a new order
+  return { metas: ratingPosters(await kidsFilter(metas, ctx), ctx), cacheMaxAge: everyLoad ? 0 : row.personal ? 600 : 3600 };
 }
 
 // Own poster URL (any rating-poster service) wins over RPDB.

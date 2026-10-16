@@ -40,6 +40,7 @@ export const LANGUAGES: Record<string, string> = {
   'zh-TW': '中文 (繁體)',
 };
 export const REFRESH_HOURS = [1, 3, 6, 12, 24];
+export const SHUFFLE_HOURS = [0, 1, 6, 24]; // 0 = every app start
 export const AI_LIMITS = [20, 40, 100, 200];
 export const KID_AGES = [0, 6, 12, 16];
 const KID_GENRE_NAMES: Record<string, string> = { horror: 'Horror', thriller: 'Thriller', crime: 'Crime', war: 'War', romance: 'Romance', mystery: 'Mystery' };
@@ -563,7 +564,7 @@ ${scopeNote}
 <div id="rowmore">${MORE_GROUPS.map(([g, label]) => `<div class="mgroup" data-g="${esc(g)}"><h4>${label}</h4><div class="rows">${moreRows.filter((id) => ROWS[id].group === g).map(rowHtml).join('')}</div></div>`).join('')}</div></details>
 ${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for this profile’s “For You” rows<select name="nuvioProfile">${s.nuvioProfiles.map((p) => `<option value="${p.index}"${p.index === s.nuvioProfile ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
 <label class="check"><input class="sw" type="checkbox" name="hideWatched" value="1"${s.hideWatched ? ' checked' : ''}>Hide titles this profile has already watched in Trending, Popular, New and the other standard rows</label>
-<label class="check"><input class="sw" type="checkbox" name="shuffle" value="1"${s.shuffle ? ' checked' : ''}>Mix up the order of your personal and genre rows every few hours, so the home screen feels fresh (your best picks stay first)</label>
+<label>Mix up the order of titles in your rows (your best picks stay first)<select name="shuffleEvery"><option value="off"${s.shuffle ? '' : ' selected'}>Off</option>${SHUFFLE_HOURS.map((h) => `<option value="${h}"${s.shuffle && h === s.shuffleHours ? ' selected' : ''}>${h === 0 ? 'on every app start' : h === 24 ? 'once a day' : `every ${h} hour${h > 1 ? 's' : ''}`}</option>`).join('')}</select></label>
 <h3>Rotating genres</h3>
 <p class="small muted" style="margin:0">Switch on “Rotating Genre 1–3” in the rows above. Every day they show different genres from your selection. Genres you already have as their own row are skipped.</p>
 <label>How to pick<select name="cycleMode"><option value="history"${s.genreCycle.mode === 'history' ? ' selected' : ''}>Weighted by your watch history (genres you like come up more often)</option><option value="random"${s.genreCycle.mode === 'random' ? ' selected' : ''}>Random</option></select></label>
