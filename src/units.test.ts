@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { animeKidsOk, defaultName, discover, GEMS_PATHS, isOn, SHORT_PATH, LIKE, mixUp, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
+import { freshness, shuffleMetas, animeKidsOk, defaultName, discover, GEMS_PATHS, isOn, SHORT_PATH, LIKE, mixUp, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
 import { parseItems } from './ai.ts';
 import { ageFrom, trailerFrom } from './sources.ts';
 import { DEFAULT_SETTINGS } from './store.ts';
@@ -140,4 +140,38 @@ test('context rows: short movies and hidden gems, off by default', () => {
   assert.equal(ROWS['ctx-gems'].type, 'mixed');
   assert.equal(defaultName('ctx-short', 'de-DE'), 'Unter 90 Minuten');
   assert.equal(isOn('ctx-gems', DEFAULT_SETTINGS), false);
+});
+
+test('shuffle: every row mixes except the date-ordered ones; keepTop only holds personal rows', () => {
+  const metas: any[] = Array.from({ length: 30 }, (_, i) => ({ id: `tt${i}`, type: 'movie', name: `T${i}` }));
+  const ids = (x: any[]) => x.map((m) => m.id).join();
+  const dated = new Set(['upcoming', 'new-episodes', 'saga-movie', 'anime-new', 'anime-movies-new']);
+  const s = { ...DEFAULT_SETTINGS, shuffle: true, shuffleHours: 0, keepTop: false };
+  for (const id of Object.keys(ROWS)) {
+    const a = shuffleMetas(id, metas, s, 1).metas;
+    const b = shuffleMetas(id, metas, s, 1).metas;
+    if (dated.has(id)) assert.equal(ids(a), ids(metas), `${id} keeps its date order`);
+    else {
+      assert.notEqual(ids(a), ids(b), `${id} gets a new order on every load`);
+      assert.equal(a.length, 30, `${id}: nothing lost`);
+    }
+  }
+  const personal = Object.keys(ROWS).find((id) => ROWS[id].personal)!;
+  const other = Object.keys(ROWS).find((id) => !ROWS[id].personal && !dated.has(id))!;
+  for (let i = 0; i < 5; i++) {
+    assert.equal(ids(shuffleMetas(personal, metas, { ...s, keepTop: true }, 1).metas.slice(0, 3)), 'tt0,tt1,tt2', 'top 3 stay');
+    assert.equal(shuffleMetas(other, metas, { ...s, keepTop: true }, 1).metas.length, 30);
+  }
+  assert.equal(ids(shuffleMetas(other, metas, { ...s, shuffle: false }, 1).metas), ids(metas), 'off: untouched');
+  const timed = { ...s, shuffleHours: 6 };
+  assert.equal(ids(shuffleMetas(other, metas, timed, 1, 'u').metas), ids(shuffleMetas(other, metas, timed, 1, 'u').metas), 'timed: same order inside the window');
+});
+
+test('freshness boost: newer releases come first more often', () => {
+  assert.deepEqual([2026, 2025, 2023, 2020, undefined].map((y) => freshness({ releaseInfo: y ? String(y) : undefined }, 2026)), [3, 3, 2, 1, 1]);
+  const metas: any[] = Array.from({ length: 20 }, (_, i) => ({ id: `tt${i}`, releaseInfo: i < 10 ? '2026' : '1990' }));
+  let fresh = 0;
+  for (let i = 0; i < 100; i++) fresh += mixUp(metas, `s${i}`, 0, (m) => freshness(m, 2026)).slice(0, 10).filter((m) => m.releaseInfo === '2026').length;
+  assert.ok(fresh / 100 > 6.5, `new titles dominate the top 10 (avg ${fresh / 100})`);
+  assert.ok(fresh / 100 < 10, 'but not always');
 });

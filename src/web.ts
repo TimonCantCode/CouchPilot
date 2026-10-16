@@ -568,6 +568,7 @@ ${s.nuvioProfiles.length > 1 ? `<label>Nuvio profile for this profile’s “For
 <label class="check"><input class="sw" type="checkbox" name="loopRows" value="1"${s.loopRows ? ' checked' : ''}>Loop short rows: when a row runs out of titles it starts again, so it never ends</label>
 <label>Mix up the order of titles in your rows<select name="shuffleEvery"><option value="off"${s.shuffle ? '' : ' selected'}>Off</option>${SHUFFLE_HOURS.map((h) => `<option value="${h}"${s.shuffle && h === s.shuffleHours ? ' selected' : ''}>${h === 0 ? 'on every app start' : h === 24 ? 'once a day' : `every ${h} hour${h > 1 ? 's' : ''}`}</option>`).join('')}</select></label>
 <label class="check"><input class="sw" type="checkbox" name="keepTop" value="1"${s.keepTop ? ' checked' : ''}>When mixing, keep the 3 best picks of your “For You” rows on top</label>
+<label class="check"><input class="sw" type="checkbox" name="freshBoost" value="1"${s.freshBoost ? ' checked' : ''}>When mixing, show newer releases a bit more often near the top of a row</label>
 <h3>Rotating genres</h3>
 <p class="small muted" style="margin:0">Switch on “Rotating Genre 1–3” in the rows above. Every day they show different genres from your selection. Genres you already have as their own row are skipped.</p>
 <label>How to pick<select name="cycleMode"><option value="history"${s.genreCycle.mode === 'history' ? ' selected' : ''}>Weighted by your watch history (genres you like come up more often)</option><option value="random"${s.genreCycle.mode === 'random' ? ' selected' : ''}>Random</option></select></label>

@@ -123,14 +123,33 @@ export const cycleToday = async (ctx: Ctx) => Promise.all((await cycleGenres(ctx
 // Variety: every row is reshuffled on each load (= app start) or every n hours, the first 3 personal picks stay on top only with the keepTop setting.
 // Timed mode is seeded, so all pages and repeated loads within the window agree. Date-ordered rows keep their order.
 const KEEP_ORDER = new Set(['upcoming', 'new-episodes', 'saga-movie', 'anime-new', 'anime-movies-new']);
-export function mixUp<T>(items: T[], seed: string, keep: number): T[] {
+// With a weight, heavier items land near the front more often (weighted random order), still never the same twice.
+export function mixUp<T>(items: T[], seed: string, keep: number, weight?: (item: T) => number): T[] {
   const rnd = seeded(seed);
   const rest = items.slice(keep);
+  if (weight) {
+    const keyed = rest.map((m) => ({ m, k: rnd() ** (1 / Math.max(0.01, weight(m))) }));
+    return [...items.slice(0, keep), ...keyed.sort((a, b) => b.k - a.k).map((x) => x.m)];
+  }
   for (let i = rest.length - 1; i > 0; i--) {
     const j = Math.floor(rnd() * (i + 1));
     [rest[i], rest[j]] = [rest[j], rest[i]];
   }
   return [...items.slice(0, keep), ...rest];
+}
+// Newer releases weigh more: this/last year 3, up to 3 years ago 2, rest (or unknown year) 1
+export const freshness = (m: { releaseInfo?: string }, year = new Date().getFullYear()) => {
+  const age = year - parseInt(m.releaseInfo ?? '', 10);
+  return !(age >= 0) ? 1 : age <= 1 ? 3 : age <= 3 ? 2 : 1;
+};
+// The shuffle step of a catalog request (own function so tests can check every row)
+export function shuffleMetas(id: string, metas: Meta[], settings: Settings, page: number, userId?: string): { metas: Meta[]; everyLoad: boolean } {
+  const { shuffle, shuffleHours } = settings;
+  const on = shuffle && !KEEP_ORDER.has(id);
+  const everyLoad = on && !shuffleHours;
+  if (!on) return { metas, everyLoad };
+  const seed = everyLoad ? String(Math.random()) : `${userId ?? 'public'}:${id}:${page}:${Math.floor(Date.now() / (shuffleHours * 3600_000))}`;
+  return { metas: mixUp(metas, seed, ROWS[id]?.personal && settings.keepTop ? 3 : 0, settings.freshBoost ? freshness : undefined), everyLoad };
 }
 
 // "like Inception" / "ähnlich wie Dark" in Nuvio's search: TMDB recommendations for that title, no AI call
@@ -442,10 +461,9 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   let metas = await dedupe(id, ctx, await kidsFilter(await rowMetas(id, ctx, page), ctx), page);
   // Loop: past the end of a row, start over with its first page (a different order each lap when shuffled)
   if (!metas.length && page > 1 && ctx.settings.loopRows) metas = await kidsFilter(await rowMetas(id, ctx, 1), ctx);
-  const { shuffle, shuffleHours } = ctx.settings;
-  const everyLoad = shuffle && !shuffleHours && !KEEP_ORDER.has(id);
-  if (shuffle && !KEEP_ORDER.has(id))
-    metas = mixUp(metas, everyLoad ? String(Math.random()) : `${ctx.userId ?? 'public'}:${id}:${page}:${Math.floor(Date.now() / (shuffleHours * 3600_000))}`, row.personal && ctx.settings.keepTop ? 3 : 0);
+  const shuffled = shuffleMetas(id, metas, ctx.settings, page, ctx.userId);
+  metas = shuffled.metas;
+  const everyLoad = shuffled.everyLoad;
   // "every app start": no client caching, so each fresh load gets a new order
   return { metas: ratingPosters(metas, ctx), cacheMaxAge: everyLoad ? 0 : row.personal ? 600 : 3600 };
 }

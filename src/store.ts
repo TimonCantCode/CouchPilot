@@ -92,6 +92,7 @@ export type Settings = {
   anilistUser: string;
   meta: { source: 'cinemeta' | 'enhanced'; localize: boolean; cast: boolean; trailers: boolean; episodes: boolean };
   shuffle: boolean; // mix up the titles in every row (date-ordered rows keep their order)
+  freshBoost: boolean; // shuffle puts newer releases a bit more often near the top
   keepTop: boolean; // shuffle leaves the first 3 personal picks on top
   shuffleHours: number; // how often: 0 = on every load (every app start), else every n hours
   dedupeAll: boolean; // leave out titles earlier rows show on every page of a row (default: only page 1)
@@ -135,6 +136,7 @@ export const DEFAULT_SETTINGS: Settings = {
   shuffle: true,
   shuffleHours: 0,
   keepTop: false,
+  freshBoost: false,
   aiDailyLimit: 40,
   aiSearch: true,
   kids: { on: false, maxAge: 12, blockGenres: ['horror', 'thriller', 'crime', 'war'] },
