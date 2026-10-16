@@ -120,7 +120,7 @@ async function cycleGenres(ctx: Ctx): Promise<string[]> {
 }
 // Today's genre name per rotating slot, for the config page
 export const cycleToday = async (ctx: Ctx) => Promise.all((await cycleGenres(ctx)).map((g) => rowName(g, ctx)));
-// Variety: every row is reshuffled on each load (= app start) or every n hours, the first personal picks stay on top.
+// Variety: every row is reshuffled on each load (= app start) or every n hours, the first 3 personal picks stay on top only with the keepTop setting.
 // Timed mode is seeded, so all pages and repeated loads within the window agree. Date-ordered rows keep their order.
 const KEEP_ORDER = new Set(['upcoming', 'new-episodes', 'saga-movie', 'anime-new', 'anime-movies-new']);
 export function mixUp<T>(items: T[], seed: string, keep: number): T[] {
@@ -398,18 +398,24 @@ async function rowMetas(id: string, ctx: Ctx, page: number): Promise<Meta[]> {
   return metas.filter((m) => !seen.has(m.id));
 }
 
-// Netflix-like: a title only shows in the first row it appears in on the home screen (page 1 of each row);
-// later pages also leave out what earlier rows already show there. Earlier rows go through the kids filter
+// Netflix-like: a title only shows in the first row it appears in on the home screen (page 1 of each row).
+// Only page 1 of a row is checked, unless the "dedupe all pages" setting is on. Earlier rows go through the kids filter
 // like they do when shown. They come from the same caches Nuvio fills when it loads them, so this is mostly Redis reads.
 // ponytail: O(rows²) reads per page, store a per-user "shown" set if that ever shows up in latency
-export async function dedupe(id: string, ctx: Ctx, metas: Meta[]): Promise<Meta[]> {
+const MIN_ROW = 18; // a row never gets shorter than this because of dedupe
+export async function dedupe(id: string, ctx: Ctx, metas: Meta[], page = 1): Promise<Meta[]> {
+  if (page > 1 && !ctx.settings.dedupeAll) return metas;
   const ids = orderedRowIds(ctx.settings).filter((r) => usable(r, ctx));
   const i = ids.indexOf(id);
   if (i <= 0) return metas;
   const earlier = await Promise.all(ids.slice(0, i).map((r) => rowMetas(r, ctx, 1).then((m) => kidsFilter(m, ctx)).catch(() => [] as Meta[])));
   const seen = new Set(earlier.flat().map((m) => m.id));
   const rest = metas.filter((m) => !seen.has(m.id));
-  return rest.length >= 8 ? rest : metas; // a near-empty row looks broken, keep the duplicates then
+  if (rest.length >= MIN_ROW) return rest;
+  // too short looks broken: put back just enough duplicates (in original order) to reach the minimum
+  let need = Math.min(MIN_ROW, metas.length) - rest.length;
+  const keep = new Set(metas.filter((m) => seen.has(m.id) && need-- > 0).map((m) => m.id));
+  return metas.filter((m) => !seen.has(m.id) || keep.has(m.id));
 }
 
 export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSearchParams): Promise<{ metas: Meta[]; cacheMaxAge?: number }> {
@@ -433,11 +439,13 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   const page = Math.round(Number(extra.get('skip') ?? 0) / 20) + 1;
   if (!(page >= 1 && page <= 25)) return { metas: [] };
   // Kids filter first, so dedupe's "near-empty row" check sees what is really shown
-  let metas = await dedupe(id, ctx, await kidsFilter(await rowMetas(id, ctx, page), ctx));
+  let metas = await dedupe(id, ctx, await kidsFilter(await rowMetas(id, ctx, page), ctx), page);
+  // Loop: past the end of a row, start over with its first page (a different order each lap when shuffled)
+  if (!metas.length && page > 1 && ctx.settings.loopRows) metas = await kidsFilter(await rowMetas(id, ctx, 1), ctx);
   const { shuffle, shuffleHours } = ctx.settings;
   const everyLoad = shuffle && !shuffleHours && !KEEP_ORDER.has(id);
   if (shuffle && !KEEP_ORDER.has(id))
-    metas = mixUp(metas, everyLoad ? String(Math.random()) : `${ctx.userId ?? 'public'}:${id}:${page}:${Math.floor(Date.now() / (shuffleHours * 3600_000))}`, row.personal ? 3 : 0);
+    metas = mixUp(metas, everyLoad ? String(Math.random()) : `${ctx.userId ?? 'public'}:${id}:${page}:${Math.floor(Date.now() / (shuffleHours * 3600_000))}`, row.personal && ctx.settings.keepTop ? 3 : 0);
   // "every app start": no client caching, so each fresh load gets a new order
   return { metas: ratingPosters(metas, ctx), cacheMaxAge: everyLoad ? 0 : row.personal ? 600 : 3600 };
 }

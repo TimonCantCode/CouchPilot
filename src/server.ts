@@ -457,7 +457,10 @@ app.post('/configure', auth, async (req, res) => {
     aiPrompt: field(b.aiPrompt).slice(0, 500),
     aiReasons: b.aiReasons === '1',
     hideWatched: b.hideWatched === '1',
+    dedupeAll: b.dedupeAll === '1',
+    loopRows: b.loopRows === '1',
     shuffle: b.shuffleEvery !== 'off',
+    keepTop: b.keepTop === '1',
     shuffleHours: SHUFFLE_HOURS.includes(Number(b.shuffleEvery)) ? Number(b.shuffleEvery) : DEFAULT_SETTINGS.shuffleHours,
     genreCycle: cycleSettings(b.cycleMode, list(b.cyclePool)),
     aiDailyLimit: AI_LIMITS.includes(Number(b.aiDailyLimit)) ? Number(b.aiDailyLimit) : DEFAULT_SETTINGS.aiDailyLimit,
@@ -555,7 +558,7 @@ app.post('/export', auth, async (req, res) => {
     exportedAt: new Date().toISOString(),
     settings: {
       rows: s.rows, order: s.order, names: s.names, refreshHours: s.refreshHours, language: s.language, timezone: s.timezone,
-      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, shuffle: s.shuffle, shuffleHours: s.shuffleHours,customRows: s.customRows, aiSearch: s.aiSearch, aiDailyLimit: s.aiDailyLimit, genreCycle: s.genreCycle, kids: s.kids,
+      ai: s.ai, aiPrompt: s.aiPrompt, aiReasons: s.aiReasons, meta: s.meta, anilistUser: s.anilistUser, hideWatched: s.hideWatched, dedupeAll: s.dedupeAll, loopRows: s.loopRows, shuffle: s.shuffle, keepTop: s.keepTop, shuffleHours: s.shuffleHours,customRows: s.customRows, aiSearch: s.aiSearch, aiDailyLimit: s.aiDailyLimit, genreCycle: s.genreCycle, kids: s.kids,
     },
   };
   // Keys only on request; Nuvio/Trakt/Simkl logins are never exported (rotating tokens must exist only once)
@@ -606,7 +609,10 @@ app.post('/import', auth, async (req, res) => {
     },
     anilistUser: /^[A-Za-z0-9_-]{2,20}$/.test(anilist) ? anilist : '',
     hideWatched: i.hideWatched !== false,
+    dedupeAll: i.dedupeAll === true,
+    loopRows: i.loopRows === true,
     shuffle: i.shuffle !== false,
+    keepTop: i.keepTop === true,
     shuffleHours: SHUFFLE_HOURS.includes(Number(i.shuffleHours)) ? Number(i.shuffleHours) : DEFAULT_SETTINGS.shuffleHours,
     genreCycle: cycleSettings(i.genreCycle?.mode, Array.isArray(i.genreCycle?.pool) ? i.genreCycle.pool.map(String) : []),
     aiDailyLimit: AI_LIMITS.includes(Number(i.aiDailyLimit)) ? Number(i.aiDailyLimit) : DEFAULT_SETTINGS.aiDailyLimit,

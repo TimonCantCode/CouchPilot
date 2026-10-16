@@ -91,8 +91,11 @@ export type Settings = {
   nuvioProfiles: { index: number; name: string }[];
   anilistUser: string;
   meta: { source: 'cinemeta' | 'enhanced'; localize: boolean; cast: boolean; trailers: boolean; episodes: boolean };
-  shuffle: boolean; // mix up the titles in every row (best personal picks stay first, date-ordered rows keep their order)
+  shuffle: boolean; // mix up the titles in every row (date-ordered rows keep their order)
+  keepTop: boolean; // shuffle leaves the first 3 personal picks on top
   shuffleHours: number; // how often: 0 = on every load (every app start), else every n hours
+  dedupeAll: boolean; // leave out titles earlier rows show on every page of a row (default: only page 1)
+  loopRows: boolean; // a row that runs out starts again from its beginning, so it feels endless
   hideWatched: boolean; // hide already watched titles in Trending, Popular, New … rows
   aiDailyLimit: number; // max. AI calls per day for this profile, protects the key if the install URL leaks
   aiSearch: boolean; // Nuvio search also understands descriptions ("the movie with the dream in a dream")
@@ -127,8 +130,11 @@ export const DEFAULT_SETTINGS: Settings = {
   anilistUser: '',
   meta: { source: 'enhanced', localize: true, cast: true, trailers: true, episodes: true },
   hideWatched: true,
+  dedupeAll: false,
+  loopRows: false,
   shuffle: true,
   shuffleHours: 0,
+  keepTop: false,
   aiDailyLimit: 40,
   aiSearch: true,
   kids: { on: false, maxAge: 12, blockGenres: ['horror', 'thriller', 'crime', 'war'] },

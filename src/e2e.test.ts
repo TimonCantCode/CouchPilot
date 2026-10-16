@@ -350,10 +350,10 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     const trending = (await json(`${base}/catalog/movie/trending-movie.json`)).metas.map((x: any) => x.id);
     assert.ok(trending.includes('tt0468569'));
     const short = (await json(`${base}/catalog/movie/ctx-short.json`)).metas.map((x: any) => x.id);
-    assert.equal(short.length, 11, 'The Dark Knight is already in Trending, so it is left out here');
-    assert.ok(!short.includes('tt0468569'));
+    assert.equal(short.length, 12, 'The Dark Knight is in Trending too, but dropping it would leave under 18, so it stays');
+    assert.ok(short.includes('tt0468569'));
     const page2 = (await json(`${base}/catalog/movie/ctx-short/skip=20.json`)).metas.map((x: any) => x.id);
-    assert.ok(page2.length && !page2.includes('tt0468569'), 'later pages leave it out too');
+    assert.equal(page2.length, 12, 'later pages are not checked for repeats by default');
   });
 
   test('shuffle: new order on every app start, or off', async () => {
@@ -371,7 +371,7 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     assert.equal((await owner.req('/configure', form)).status, 303);
     assert.match(await owner.page(), /<option value="off" selected>/);
     const off = await json(url);
-    assert.deepEqual(off.metas.map((x: any) => x.id), Array.from({ length: 11 }, (_, i) => `tt${9000 + i}`), 'TMDB order kept');
+    assert.deepEqual(off.metas.map((x: any) => x.id), ['tt0468569', ...Array.from({ length: 11 }, (_, i) => `tt${9000 + i}`)], 'TMDB order kept');
     assert.equal(off.cacheMaxAge, 3600);
   });
 
@@ -385,7 +385,7 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     const short = (await json(`${base}/catalog/movie/ctx-short.json`)).metas.map((x: any) => x.id);
     assert.ok(!short.includes('tt9000'), 'FSK 16 removed');
     assert.equal(short.length, 7, '6 left after the kids filter plus The Dark Knight');
-    assert.ok(short.includes('tt0468569'), 'too few left to drop the duplicate, so it stays');
+    assert.ok(short.includes('tt0468569'), 'too few left to drop the duplicate (minimum 18), so it stays');
     form.delete('kidsOn');
     assert.equal((await owner.req('/configure', form)).status, 303);
     await jobsDone(owner); // saving starts a background job, its AI calls must not leak into the next test
