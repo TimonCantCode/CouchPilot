@@ -1,5 +1,5 @@
 import { aiSearch, ensureFresh, genreWeights, moodName, moodSlot, personalRow, userDay, watchedIds } from './personal.ts';
-import { ageFrom, anilistList, cinemetaCatalog, recommendationsPath, tmdbSearch, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
+import { ageFrom, isAnimeId, anilistList, cinemetaCatalog, recommendationsPath, tmdbSearch, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
 import { cached, configByUser, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
 export type Ctx = { settings: Settings; tmdbKey?: string; rpdbKey?: string; posterUrl?: string; userId?: string };
@@ -398,14 +398,15 @@ async function rowMetas(id: string, ctx: Ctx, page: number): Promise<Meta[]> {
   return metas.filter((m) => !seen.has(m.id));
 }
 
-// Netflix-like: on the home screen (page 1) a title only shows in the first row it appears in.
-// Earlier rows come from the same cache Nuvio fills when it loads them, so this is mostly Redis reads.
-// ponytail: O(rows²) reads per home screen, store a per-user "shown" set if that ever shows up in latency
+// Netflix-like: a title only shows in the first row it appears in on the home screen (page 1 of each row);
+// later pages also leave out what earlier rows already show there. Earlier rows go through the kids filter
+// like they do when shown. They come from the same caches Nuvio fills when it loads them, so this is mostly Redis reads.
+// ponytail: O(rows²) reads per page, store a per-user "shown" set if that ever shows up in latency
 export async function dedupe(id: string, ctx: Ctx, metas: Meta[]): Promise<Meta[]> {
   const ids = orderedRowIds(ctx.settings).filter((r) => usable(r, ctx));
   const i = ids.indexOf(id);
   if (i <= 0) return metas;
-  const earlier = await Promise.all(ids.slice(0, i).map((r) => rowMetas(r, ctx, 1).catch(() => [] as Meta[])));
+  const earlier = await Promise.all(ids.slice(0, i).map((r) => rowMetas(r, ctx, 1).then((m) => kidsFilter(m, ctx)).catch(() => [] as Meta[])));
   const seen = new Set(earlier.flat().map((m) => m.id));
   const rest = metas.filter((m) => !seen.has(m.id));
   return rest.length >= 8 ? rest : metas; // a near-empty row looks broken, keep the duplicates then
@@ -431,14 +432,14 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   // ponytail: round instead of floor, filtered pages return < 20 items so skip is uneven
   const page = Math.round(Number(extra.get('skip') ?? 0) / 20) + 1;
   if (!(page >= 1 && page <= 25)) return { metas: [] };
-  let metas = await rowMetas(id, ctx, page);
-  if (page === 1) metas = await dedupe(id, ctx, metas);
+  // Kids filter first, so dedupe's "near-empty row" check sees what is really shown
+  let metas = await dedupe(id, ctx, await kidsFilter(await rowMetas(id, ctx, page), ctx));
   const { shuffle, shuffleHours } = ctx.settings;
   const everyLoad = shuffle && !shuffleHours && !KEEP_ORDER.has(id);
   if (shuffle && !KEEP_ORDER.has(id))
     metas = mixUp(metas, everyLoad ? String(Math.random()) : `${ctx.userId ?? 'public'}:${id}:${page}:${Math.floor(Date.now() / (shuffleHours * 3600_000))}`, row.personal ? 3 : 0);
   // "every app start": no client caching, so each fresh load gets a new order
-  return { metas: ratingPosters(await kidsFilter(metas, ctx), ctx), cacheMaxAge: everyLoad ? 0 : row.personal ? 600 : 3600 };
+  return { metas: ratingPosters(metas, ctx), cacheMaxAge: everyLoad ? 0 : row.personal ? 600 : 3600 };
 }
 
 // Own poster URL (any rating-poster service) wins over RPDB.
@@ -453,20 +454,29 @@ export const ratingPosters = (metas: Meta[], ctx: Ctx): Meta[] =>
       )
     : metas;
 
-// Kids mode: only titles with a known age rating up to the limit and none of the blocked genres
+// Kids mode: only titles with a known age rating up to the limit and none of the blocked genres.
+// Anime without a TMDB rating (kitsu: IDs, or no rating there) go by their AniList genres instead.
 export const KID_GENRES: Record<string, number[]> = { horror: [27], thriller: [53], crime: [80], war: [10752, 10768], romance: [10749], mystery: [9648] };
+const ANIME_NEVER = ['Ecchi', 'Horror', 'Psychological', 'Thriller'];
+const ANIME_BLOCK: Record<string, string> = { horror: 'Horror', thriller: 'Thriller', romance: 'Romance', mystery: 'Mystery' };
+const ANIME_GENTLE = ['Adventure', 'Comedy', 'Fantasy', 'Mahou Shoujo', 'Music', 'Slice of Life', 'Sports'];
+// AniList has no age ratings: never the adult-leaning genres, under 12 only gentle ones
+// ponytail: genre heuristic, add AniList tags (Gore, Nudity, …) if parents report misses
+export const animeKidsOk = (genres: string[], k: Settings['kids']) =>
+  genres.length > 0 &&
+  !genres.some((g) => ANIME_NEVER.includes(g) || k.blockGenres.some((b) => ANIME_BLOCK[b] === g)) &&
+  (k.maxAge >= 12 || genres.every((g) => ANIME_GENTLE.includes(g)));
 async function kidsFilter(metas: Meta[], ctx: Ctx): Promise<Meta[]> {
   const k = ctx.settings.kids;
   if (!k?.on) return metas;
-  if (!ctx.tmdbKey) return []; // can't check ratings without TMDB: show nothing rather than something unsuitable
   const blocked = new Set(k.blockGenres.flatMap((g) => KID_GENRES[g] ?? []));
   const ok = await Promise.all(
     metas.map(async (m) => {
-      if (!m.id.startsWith('tt')) return false;
-      const id = await tmdbIdFor(m.type, m.id, ctx.tmdbKey!).catch(() => null);
+      const id = m.id.startsWith('tt') && ctx.tmdbKey ? await tmdbIdFor(m.type, m.id, ctx.tmdbKey).catch(() => null) : null;
       const d = id ? await tmdbDetails(m.type, id, ctx.tmdbKey!, ctx.settings.language).catch(() => null) : null;
       const age = d ? ageFrom(d, m.type) : null;
-      return age !== null && age <= k.maxAge && !(d.genres ?? []).some((g: any) => blocked.has(g.id));
+      if (age !== null) return age <= k.maxAge && !(d.genres ?? []).some((g: any) => blocked.has(g.id));
+      return isAnimeId(m.id) && animeKidsOk(m.genres ?? [], k); // no rating to check: hide rather than show something unsuitable
     }),
   );
   return metas.filter((_, i) => ok[i]);

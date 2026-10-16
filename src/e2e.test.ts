@@ -21,15 +21,21 @@ const FIND: Record<string, object> = {
   tt0903747: { movie_results: [], tv_results: [{ id: 1396 }] },
   tt3032476: { movie_results: [], tv_results: [{ id: 60059 }] },
 };
-// FSK per TMDB ID (Pulp Fiction 16, everything else 12), Better Call Saul is crime
-const AGE: Record<number, string> = { 680: '16' };
+// FSK per TMDB ID (Pulp Fiction and the first five "Under 90 Minutes" titles 16, everything else 12), Better Call Saul is crime
+const AGE: Record<number, string> = { 680: '16', 9000: '16', 9001: '16', 9002: '16', 9003: '16', 9004: '16' };
 const GENRES: Record<number, number[]> = { 60059: [80, 18], 680: [80], 155: [28] };
 const aiCalls: string[] = [];
 const real = globalThis.fetch;
 globalThis.fetch = (async (input: any, init: any = {}) => {
   const u = String(input);
   if (u.startsWith('http://localhost')) return real(input, init);
+  // Anime: three kitsu-only titles, AniList has genres but no age rating
+  if (u.includes('anime-list')) return J([1, 2, 3].map((n) => ({ anilist_id: n, kitsu_id: 10 + n })));
   if (u.includes('githubusercontent')) return J([]);
+  if (u.startsWith('https://graphql.anilist.co')) {
+    const genres = [['Comedy', 'Slice of Life'], ['Action', 'Horror'], ['Action', 'Adventure']];
+    return J({ data: { Page: { media: genres.map((g, i) => ({ id: i + 1, format: 'TV', title: { english: 'A' + (i + 1) }, genres: g, startDate: {} })) } } });
+  }
   if (u.includes('grant_type=password')) return JSON.parse(init.body).password === 'nuviopw' ? J({ access_token: 'a', refresh_token: 'r1', expires_in: 3600 }) : new Response('{}', { status: 400 });
   if (u.includes('grant_type=refresh_token')) return J({ access_token: 'a2', refresh_token: 'r' + Date.now(), expires_in: 3600 });
   if (u.includes('sync_pull_profiles')) return J([{ profile_index: 1, name: 'Timon' }, { profile_index: 2, name: 'Gast' }]);
@@ -50,7 +56,7 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
     const path = new URL(u).pathname.replace('/3', '');
     let m;
     if (path === '/configuration') return J({});
-    if ((m = path.match(/^\/find\/(tt\d+)/))) return J(FIND[m[1]] ?? { movie_results: [], tv_results: [] });
+    if ((m = path.match(/^\/find\/(tt\d+)/))) return J(FIND[m[1]] ?? (/^tt9\d{3}$/.test(m[1]) ? { movie_results: [{ id: Number(m[1].slice(2)) }], tv_results: [] } : { movie_results: [], tv_results: [] }));
     if (path.startsWith('/genre/')) return J({ genres: [{ id: 28, name: 'Action' }, { id: 80, name: 'Crime' }, { id: 18, name: 'Drama' }] });
     if (path.startsWith('/search/movie')) return J({ results: [{ id: 27205, title: 'Inception', genre_ids: [878] }] });
     if (path.startsWith('/search/tv')) return J({ results: [{ id: 1396, name: 'Breaking Bad', genre_ids: [18] }] });
@@ -346,6 +352,64 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     const short = (await json(`${base}/catalog/movie/ctx-short.json`)).metas.map((x: any) => x.id);
     assert.equal(short.length, 11, 'The Dark Knight is already in Trending, so it is left out here');
     assert.ok(!short.includes('tt0468569'));
+    const page2 = (await json(`${base}/catalog/movie/ctx-short/skip=20.json`)).metas.map((x: any) => x.id);
+    assert.ok(page2.length && !page2.includes('tt0468569'), 'later pages leave it out too');
+  });
+
+  test('shuffle: new order on every app start, or off', async () => {
+    const base = installUrl(await owner.page()).replace('/manifest.json', '');
+    const url = `${base}/catalog/movie/ctx-short.json`;
+    const r = await fetch(url);
+    assert.equal(r.headers.get('cache-control'), 'max-age=0', 'every app start (default): no client caching');
+    assert.equal(((await r.json()) as any).cacheMaxAge, 0);
+    const orders = new Set<string>();
+    for (let i = 0; i < 5; i++) orders.add((await json(url)).metas.map((x: any) => x.id).join());
+    assert.ok(orders.size > 1, 'new order per load');
+    const form = cfgForm(await owner.page());
+    form.set('shuffleEvery', 'off');
+    form.set('scope', 'this');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    assert.match(await owner.page(), /<option value="off" selected>/);
+    const off = await json(url);
+    assert.deepEqual(off.metas.map((x: any) => x.id), Array.from({ length: 11 }, (_, i) => `tt${9000 + i}`), 'TMDB order kept');
+    assert.equal(off.cacheMaxAge, 3600);
+  });
+
+  test('kids mode filters before dedupe, so a row is never left near empty', async () => {
+    const form = cfgForm(await owner.page());
+    form.set('kidsOn', '1');
+    form.set('kidsAge', '12');
+    form.set('scope', 'this');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    const base = installUrl(await owner.page()).replace('/manifest.json', '');
+    const short = (await json(`${base}/catalog/movie/ctx-short.json`)).metas.map((x: any) => x.id);
+    assert.ok(!short.includes('tt9000'), 'FSK 16 removed');
+    assert.equal(short.length, 7, '6 left after the kids filter plus The Dark Knight');
+    assert.ok(short.includes('tt0468569'), 'too few left to drop the duplicate, so it stays');
+    form.delete('kidsOn');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    await jobsDone(owner); // saving starts a background job, its AI calls must not leak into the next test
+  });
+
+  test('kids mode keeps anime without an age rating by its AniList genres', async () => {
+    const form = cfgForm(await owner.page());
+    form.append('rows', 'anime-trending');
+    form.set('scope', 'this');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    const base = installUrl(await owner.page()).replace('/manifest.json', '');
+    const anime = async () => (await json(`${base}/catalog/series/anime-trending.json`)).metas.map((x: any) => x.id).sort();
+    assert.deepEqual(await anime(), ['kitsu:11', 'kitsu:12', 'kitsu:13'], 'kids mode off: all');
+    form.set('kidsOn', '1');
+    form.set('kidsAge', '12');
+    form.set('scope', 'this');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    assert.deepEqual(await anime(), ['kitsu:11', 'kitsu:13'], 'up to 12: horror anime removed');
+    form.set('kidsAge', '6');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    assert.deepEqual(await anime(), ['kitsu:11'], 'up to 6: only gentle genres');
+    form.delete('kidsOn');
+    assert.equal((await owner.req('/configure', form)).status, 303);
+    await jobsDone(owner);
   });
 
   test('search "like X" returns similar titles without an AI call', async () => {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, discover, GEMS_PATHS, isOn, SHORT_PATH, LIKE, mixUp, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
+import { animeKidsOk, defaultName, discover, GEMS_PATHS, isOn, SHORT_PATH, LIKE, mixUp, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
 import { parseItems } from './ai.ts';
 import { ageFrom, trailerFrom } from './sources.ts';
 import { DEFAULT_SETTINGS } from './store.ts';
@@ -38,6 +38,16 @@ test('age rating: FSK first, US fallback, unknown stays null', () => {
   assert.equal(ageFrom(movie('', ''), 'movie'), null);
   assert.equal(ageFrom({ adult: true }, 'movie'), 18);
   assert.equal(ageFrom({ content_ratings: { results: [{ iso_3166_1: 'US', rating: 'TV-MA' }] } }, 'series'), 16);
+});
+
+test('kids mode: anime without a rating goes by AniList genres', () => {
+  const k = (maxAge: number, blockGenres: string[] = []) => ({ on: true, maxAge, blockGenres });
+  assert.ok(animeKidsOk(['Action', 'Adventure'], k(12)));
+  assert.ok(!animeKidsOk(['Action', 'Adventure'], k(6)), 'under 12 only gentle genres');
+  assert.ok(animeKidsOk(['Comedy', 'Slice of Life'], k(0)));
+  assert.ok(!animeKidsOk(['Comedy', 'Ecchi'], k(16)), 'never ecchi');
+  assert.ok(!animeKidsOk(['Romance', 'Comedy'], k(12, ['romance'])), 'blocked genre');
+  assert.ok(!animeKidsOk([], k(16)), 'unknown genres stay out');
 });
 
 test('rows: new rows default on, AI rows only with a prompt', () => {
