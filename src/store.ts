@@ -106,13 +106,16 @@ export type Settings = {
   inherit: boolean; // profile follows the default profile's settings (history stays its own)
   defaultProfile: string; // only on the main profile: which profile is the default ('' = main profile)
 };
+// The source's login is no longer valid (refresh token revoked): no more calls until the user reconnects,
+// which overwrites the whole entry and so clears this
+export type Reauth = { at: number; reason: string };
 export type Secrets = {
   tmdbKey?: string;
   rpdbKey?: string; // ratingposterdb.com: posters with ratings
   posterUrl?: string; // own poster service, https URL with {imdb} (and optional {type}); wins over RPDB. Secret because it may contain a key
   aiKey?: string;
-  nuvio?: { refreshToken: string };
-  trakt?: { accessToken: string; refreshToken: string; expiresAt: number };
+  nuvio?: { refreshToken: string; reauth?: Reauth };
+  trakt?: { accessToken: string; refreshToken: string; expiresAt: number; reauth?: Reauth };
   simkl?: { accessToken: string };
 };
 

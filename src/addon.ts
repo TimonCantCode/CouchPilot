@@ -2,7 +2,18 @@ import { aiSearch, ensureFresh, genreWeights, moodName, moodSlot, personalRow, u
 import { ageFrom, isAnimeId, anilistList, cinemetaCatalog, recommendationsPath, tmdbSearch, cinemetaMeta, enhancedMeta, cinemetaSearch, currentSeason, kitsuMeta, tmdbDetails, tmdbIdFor, tmdbKeyword, tmdbList, type Meta, type Type } from './sources.ts';
 import { cached, configByUser, DEFAULT_SETTINGS, touchSeen, type Settings } from './store.ts';
 
-export type Ctx = { settings: Settings; tmdbKey?: string; rpdbKey?: string; posterUrl?: string; userId?: string };
+export type Ctx = { settings: Settings; tmdbKey?: string; rpdbKey?: string; posterUrl?: string; userId?: string; reauth?: boolean };
+
+// Shown as the first tile of the first For You row while a history login (Nuvio Sync, Trakt) has to be renewed.
+// The poster carries the message: Nuvio may not open the detail page while it still caches an older manifest.
+const REAUTH_ID = 'couchpilot:reauth';
+const reauthMeta = (type: Type): Meta => ({
+  id: REAUTH_ID,
+  type,
+  name: 'Couchpilot: please reconnect',
+  poster: `${(process.env.PUBLIC_URL ?? '').replace(/\/$/, '')}/reconnect.png`,
+  description: 'Your Nuvio Sync or Trakt login expired, so your For You rows can’t update. Tap “Configure” on the Couchpilot addon and reconnect it.',
+});
 // "mixed" = movies and series in one row. Nuvio opens every item with its own type.
 export type RowType = Type | 'mixed';
 type Row = {
@@ -381,9 +392,9 @@ export async function manifest(ctx: Ctx) {
     version: '0.5.0',
     name: 'Couchpilot',
     description: 'Personal rows, Cinemeta-replacement metadata and AI recommendations from your watch history. Unofficial community addon.',
-    resources: ['catalog', { name: 'meta', types: ['movie', 'series'], idPrefixes: ['tt', 'kitsu:'] }],
+    resources: ['catalog', { name: 'meta', types: ['movie', 'series'], idPrefixes: ['tt', 'kitsu:', 'couchpilot:'] }],
     types: ['movie', 'series', 'mixed'],
-    idPrefixes: ['tt', 'kitsu:'],
+    idPrefixes: ['tt', 'kitsu:', 'couchpilot:'],
     catalogs: [
       ...catalogs,
       { type: 'movie', id: 'search', name: search, extra: [{ name: 'search', isRequired: true }] },
@@ -464,6 +475,8 @@ export async function catalog(ctx: Ctx, type: RowType, id: string, extra: URLSea
   const shuffled = shuffleMetas(id, metas, ctx.settings, page, ctx.userId);
   metas = shuffled.metas;
   const everyLoad = shuffled.everyLoad;
+  if (ctx.reauth && page === 1 && id === orderedRowIds(ctx.settings).find((r) => ROWS[r]?.personal && usable(r, ctx)))
+    metas = [reauthMeta(row.type === 'series' ? 'series' : 'movie'), ...metas];
   // "every app start": no client caching, so each fresh load gets a new order
   return { metas: ratingPosters(metas, ctx), cacheMaxAge: everyLoad ? 0 : row.personal ? 600 : 3600 };
 }
@@ -514,5 +527,6 @@ export async function meta(type: Type, id: string, ctx?: Ctx) {
   if (id.startsWith('tt') && ctx?.tmdbKey && m?.source === 'enhanced') return enhancedMeta(type, id, ctx.tmdbKey, ctx.settings.language, m);
   if (id.startsWith('tt')) return cinemetaMeta(type, id);
   if (id.startsWith('kitsu:')) return { meta: await kitsuMeta(Number(id.split(':')[1])) };
+  if (id === REAUTH_ID) return { meta: reauthMeta(type) };
   return { meta: null };
 }

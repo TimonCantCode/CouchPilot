@@ -83,7 +83,7 @@ button:hover,.btn:hover{filter:brightness(1.12)}
 .ghost{background:var(--panel2);border:1px solid var(--line);color:var(--text)}
 .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
 .note{border-radius:12px;padding:12px 14px;margin:0 0 18px;border:1px solid var(--line);background:var(--panel)}
-.note.ok{border-color:rgba(34,197,94,.45);background:rgba(34,197,94,.08)}.note.err{border-color:rgba(229,9,20,.5);background:rgba(229,9,20,.08)}
+.note.ok{border-color:rgba(34,197,94,.45);background:rgba(34,197,94,.08)}.note.err{border-color:rgba(229,9,20,.5);background:rgba(229,9,20,.08)}.note.warn{border-color:rgba(234,179,8,.5);background:rgba(234,179,8,.08)}
 /* Rows */
 .rows{display:grid;gap:6px}
 .row{display:grid;grid-template-columns:auto auto 1fr auto auto;gap:10px;align-items:center;padding:6px 6px 6px 6px;border-radius:12px;background:var(--panel2)}
@@ -134,7 +134,7 @@ details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}de
 .foot-links{display:flex;align-items:center;gap:14px;margin-top:10px}.legal h2{font-size:17px;margin-top:28px}.legal li{margin:6px 0}
 .wk-sum{display:flex;gap:28px;margin:4px 0 18px}.wk-sum div{display:flex;flex-direction:column}.wk-sum b{font-size:22px}.wk-sum span{font-size:12px;color:var(--muted)}.wk-sum .bad b{color:var(--accent)}
 .wk{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}.wk-d{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}.wk-t{height:124px;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px}.wk-e{min-height:14px}
-.wk-b{width:100%;max-width:44px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,var(--accent),rgba(229,9,20,.35))}.wk-n{font-size:12px;font-weight:600}.wk-l{font-size:12px;color:var(--muted)}.wk-e{font-size:11px;color:var(--accent);font-weight:600}
+.wk-b{width:100%;max-width:44px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,var(--accent),rgba(229,9,20,.35))}.wk-n{font-size:12px;font-weight:600}.wk-l{font-size:12px;color:var(--muted)}.wk-e{font-size:11px;color:var(--accent);font-weight:600}.wk-r{color:var(--muted);font-weight:400}
 .users{margin:14px 0 0;color:var(--muted);font-size:14px}.users b{color:var(--text)}
 .foot-links a{color:var(--muted);text-decoration:none}.foot-links .push{margin-left:auto}.foot img.tmdb{height:14px;width:auto;display:block}.foot-links a:hover{color:var(--text)}
 .ic-link{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line)}.ic-link:hover{border-color:#55555f}
@@ -273,7 +273,7 @@ export type Health = {
   ok: boolean; version: string; uptimeSec: number; startedAt: string; jobsRunning: number; animeTitles: number;
   users: { accounts: number; profiles: number; active: number } | null;
   external: { name: string; ok: boolean; ms: number | null }[];
-  week: { date: string; requests: number; jobsOk: number; jobsErr: number }[];
+  week: { date: string; requests: number; jobsOk: number; jobsErr: number; jobsReauth: number }[];
   checks: { name: string; ok: boolean; ms: number | null }[];
   days: { date: string; pct: number | null }[];
 };
@@ -315,8 +315,8 @@ ${h.external.map((c) => `<div class="conn" style="margin-top:8px"><b><span class
 ${h.checks.map((c) => `<div class="conn" style="margin-top:8px"><b><span class="dot${c.ok ? ' on' : ''}"></span>${esc(c.name)}</b><span class="small muted">${c.ok ? `${c.ms} ms` : 'not reachable'}</span></div>`).join('')}
 <p class="small muted" style="margin:14px 0 0">Version ${esc(h.version)}</p></section>
 <section class="sec"><h3 style="margin-top:0">Last 7 days</h3>
-<div class="wk-sum"><div><b>${sum((d) => d.requests).toLocaleString('en')}</b><span>addon requests</span></div><div><b>${sum((d) => d.jobsOk)}</b><span>recomputes</span></div><div${sum((d) => d.jobsErr) ? ' class="bad"' : ''}><b>${sum((d) => d.jobsErr)}</b><span>failed</span></div></div>
-<div class="wk">${h.week.map((d) => `<div class="wk-d" title="${esc(d.date)}: ${d.requests} requests, ${d.jobsOk} recomputes, ${d.jobsErr} failed"><div class="wk-t"><span class="wk-n">${d.requests ? compact(d.requests) : ''}</span><span class="wk-b" style="height:${Math.max(2, Math.round((d.requests / maxReq) * 100))}px"></span></div><span class="wk-l">${new Date(d.date + 'T12:00:00Z').toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</span><span class="wk-e">${d.jobsErr ? `⚠ ${d.jobsErr}` : ''}</span></div>`).join('')}</div></section>
+<div class="wk-sum"><div><b>${sum((d) => d.requests).toLocaleString('en')}</b><span>addon requests</span></div><div><b>${sum((d) => d.jobsOk)}</b><span>recomputes</span></div><div${sum((d) => d.jobsErr) ? ' class="bad"' : ''}><b>${sum((d) => d.jobsErr)}</b><span>failed</span></div><div title="A user's Nuvio or Trakt login expired, they need to reconnect it"><b>${sum((d) => d.jobsReauth)}</b><span>needs re-auth</span></div></div>
+<div class="wk">${h.week.map((d) => `<div class="wk-d" title="${esc(d.date)}: ${d.requests} requests, ${d.jobsOk} recomputes, ${d.jobsErr} failed, ${d.jobsReauth} needs re-auth"><div class="wk-t"><span class="wk-n">${d.requests ? compact(d.requests) : ''}</span><span class="wk-b" style="height:${Math.max(2, Math.round((d.requests / maxReq) * 100))}px"></span></div><span class="wk-l">${new Date(d.date + 'T12:00:00Z').toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</span><span class="wk-e">${d.jobsErr ? `⚠ ${d.jobsErr}` : ''}${d.jobsReauth ? `<span class="wk-r"> ↻ ${d.jobsReauth}</span>` : ''}</span></div>`).join('')}</div></section>
 `,
     nonce,
     UPTIME_TICK,
@@ -462,23 +462,30 @@ export function configPage(o: {
   const disconnect = (path: string) => `<form method="post" action="${path}"><button class="ghost">Disconnect</button></form>`;
   const connect = (path: string) => `<form method="post" action="${path}"><button>Connect</button></form>`;
 
-  const nuvio = o.nuvioShared
-    ? conn('Nuvio Sync', true, `connected via the main profile's login${s.nuvioProfiles.length > 1 ? ', reads its own Nuvio profile' : ''}`, '')
-    : o.secrets.nuvio
-    ? conn('Nuvio Sync', true, `connected${s.nuvioProfiles.length > 1 ? ', every profile reads its own Nuvio profile (see step 5)' : ''}`, disconnect('/disconnect/nuvio'))
-    : `<details class="inline"><summary>${conn('Nuvio Sync', false, 'not connected', '<span class="btn">Connect</span>')}</summary>
+  // Reconnecting from any profile renews the account's one Nuvio login
+  const nuvioLogin = (detail: string, button: string, open = false) => `<details class="inline"${open ? ' open' : ''}><summary>${conn('Nuvio Sync', false, detail, `<span class="btn">${button}</span>`)}</summary>
 <form method="post" action="/connect/nuvio" class="sec" style="margin-top:8px">
-<p class="small muted" style="margin:0">Your Nuvio login. The password is used once to sign in and is never stored.</p>
+<p class="small muted" style="margin:0">Your Nuvio login. The password is used once to sign in and is never stored. After changing your Nuvio password or logging out there, check here that Nuvio Sync is still connected.</p>
 <label>Nuvio email<input type="email" name="email" required maxlength="200" autocomplete="off"></label>
 <label>Nuvio password<input type="password" name="password" required maxlength="200" autocomplete="off"></label>
 <div class="actions"><button>Connect Nuvio</button></div></form></details>`;
+  const nuvio = o.secrets.nuvio?.reauth
+    ? nuvioLogin('login expired, sign in again', 'Reconnect', true)
+    : o.nuvioShared
+      ? conn('Nuvio Sync', true, `connected via the main profile's login${s.nuvioProfiles.length > 1 ? ', reads its own Nuvio profile' : ''}`, '')
+      : o.secrets.nuvio
+        ? conn('Nuvio Sync', true, `connected${s.nuvioProfiles.length > 1 ? ', every profile reads its own Nuvio profile (see step 5)' : ''}`, disconnect('/disconnect/nuvio'))
+        : nuvioLogin('not connected', 'Connect');
   const trakt = !o.traktAvailable
     ? conn('Trakt', false, 'not set up on this server', '')
-    : o.secrets.trakt
-      ? conn('Trakt', true, 'connected', disconnect('/disconnect/trakt'))
-      : o.traktPending
-        ? pin('Trakt', o.traktPending, '/connect/trakt/check')
-        : conn('Trakt', false, 'not connected', connect('/connect/trakt'));
+    : o.traktPending
+      ? pin('Trakt', o.traktPending, '/connect/trakt/check')
+      : o.secrets.trakt?.reauth
+        ? conn('Trakt', false, 'login expired, connect again', connect('/connect/trakt'))
+        : o.secrets.trakt
+          ? conn('Trakt', true, 'connected', disconnect('/disconnect/trakt'))
+          : conn('Trakt', false, 'not connected', connect('/connect/trakt'));
+  const reauth = [o.secrets.nuvio?.reauth && 'Nuvio Sync', o.secrets.trakt?.reauth && 'Trakt'].filter(Boolean);
   const simkl = !o.simklAvailable
     ? conn('Simkl', false, 'not set up on this server', '')
     : o.secrets.simkl
@@ -544,6 +551,7 @@ ${steps.map(([id, title, done]) => `<a href="#${id}"${done ? ' class="done" titl
 <div class="content">
 ${o.msg ? `<div class="note ${o.msg.ok ? 'ok' : 'err'}">${esc(o.msg.text)}</div>` : ''}
 ${tmdb ? '' : '<div class="note err"><b>TMDB key missing.</b> Without it, movie, series and For You rows stay empty. Get one for free and add it in step 4.</div>'}
+${reauth.length ? `<div class="note warn"><b>${reauth.join(' and ')} ${reauth.length > 1 ? 'need' : 'needs'} to be reconnected.</b> The login expired, so your For You rows can't update. <a class="btn" href="#history">Reconnect</a></div>` : ''}
 
 <section class="sec step" id="history" data-title="Watch history"><h2><b>1</b>Watch history</h2>
 <p class="sub">Your “For You” rows are built from this. Read-only, nothing is ever changed.</p>

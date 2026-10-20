@@ -1,6 +1,6 @@
 import { decrypt, encrypt } from './crypto.ts';
 import { netError, type Type } from './sources.ts';
-import { redis, updateSecrets, type Secrets } from './store.ts';
+import { count, redis, updateSecrets, type Reauth, type Secrets } from './store.ts';
 
 // A watched title from any source. Series episodes are merged into the series.
 export type Watch = { id: string; type: Type; at: number; rating?: number; tmdb?: number; title?: string };
@@ -12,6 +12,35 @@ async function call(url: string, init: RequestInit): Promise<any> {
   const body = await r.text();
   if (!r.ok) throw Object.assign(new Error(`${r.status} ${url.split('?')[0]}`), { status: r.status, body });
   return body ? JSON.parse(body) : null;
+}
+
+// Safe summary of a failed auth call: status, error code and message only, never the raw body
+export function authError(err: unknown): { status?: number; code: string; text: string } {
+  const { status, body } = err as { status?: number; body?: string };
+  let j: any = null;
+  try {
+    j = JSON.parse(body ?? '');
+  } catch {}
+  return { status, code: String(j?.error_code ?? j?.error ?? '').slice(0, 60), text: String(j?.msg ?? j?.error_description ?? '').slice(0, 120) };
+}
+
+// Token refresh errors only a new login fixes: Supabase (Nuvio) codes and OAuth invalid_grant (Trakt).
+// Unknown 4xx, 5xx, timeouts and network errors stay real errors.
+const REAUTH_CODES = new Set(['refresh_token_not_found', 'refresh_token_already_used', 'session_not_found', 'session_expired', 'user_not_found', 'user_banned', 'invalid_grant']);
+export const isReauth = (e: ReturnType<typeof authError>) => (e.status === 400 || e.status === 401) && REAUTH_CODES.has(e.code);
+
+// The user has to log in again: shown to them, counted once as "needs re-auth", never as a failure
+export class NeedsReauth extends Error {}
+export const reauthText = (source: string) => `${source} needs to be reconnected`;
+
+// Logs the failed refresh once and returns the reason when only a new login fixes it (caller stores it)
+function refreshFailed(source: string, userId: string, err: unknown): Reauth | null {
+  const e = authError(err);
+  const reauth = isReauth(e);
+  console.error(`${source} token refresh ${userId.slice(0, 8)}: ${e.status ?? (err as Error).message} ${e.code} ${JSON.stringify(e.text)} → ${reauth ? 'needs re-auth' : 'error'}`);
+  if (!reauth) return null;
+  void count('job-reauth');
+  return { at: Date.now(), reason: e.code };
 }
 
 const toType = (t: string): Type | null => (t === 'movie' ? 'movie' : t === 'series' || t === 'tv' || t === 'show' ? 'series' : null);
@@ -56,16 +85,25 @@ async function nuvioAccessToken(userId: string): Promise<string> {
       try {
         let access = '';
         await updateSecrets(userId, async (sec) => {
-          if (!sec.nuvio) throw new Error('Nuvio not connected');
+          const n = sec.nuvio;
+          if (!n) throw new Error('Nuvio not connected');
+          if (n.reauth) return; // dead login: don't ask Nuvio again
           const s = await call(`${NUVIO}/auth/v1/token?grant_type=refresh_token`, {
             method: 'POST',
             headers: nuvioHeaders(),
-            body: JSON.stringify({ refresh_token: sec.nuvio.refreshToken }),
+            body: JSON.stringify({ refresh_token: n.refreshToken }),
+          }).catch((err) => {
+            const r = refreshFailed('nuvio', userId, err);
+            if (!r) throw err;
+            n.reauth = r; // stored, so the transaction commits instead of rolling back
+            return null;
           });
-          sec.nuvio.refreshToken = s.refresh_token;
+          if (!s) return;
+          n.refreshToken = s.refresh_token;
           access = s.access_token;
           await redis.set(key, encrypt(access, `nuvioat:${userId}`), 'EX', Math.max(60, Number(s.expires_in ?? 3600) - 120));
         });
+        if (!access) throw new NeedsReauth(reauthText('Nuvio'));
         return access;
       } finally {
         await redis.del(`nuvio:lock:${userId}`);
@@ -146,25 +184,35 @@ export async function traktPoll(deviceCode: string): Promise<TraktTokens | null>
 
 async function traktAccessToken(userId: string, sec: Secrets): Promise<string> {
   if (!sec.trakt) throw new Error('Trakt not connected');
+  if (sec.trakt.reauth) throw new NeedsReauth(reauthText('Trakt'));
   if (sec.trakt.expiresAt - Date.now() > 3600_000) return sec.trakt.accessToken;
   let access = '';
   await updateSecrets(userId, async (s) => {
-    if (!s.trakt) throw new Error('Trakt not connected');
-    if (s.trakt.expiresAt - Date.now() > 3600_000) return void (access = s.trakt.accessToken); // another job was faster
+    const tr = s.trakt;
+    if (!tr) throw new Error('Trakt not connected');
+    if (tr.reauth) return;
+    if (tr.expiresAt - Date.now() > 3600_000) return void (access = tr.accessToken); // another job was faster
     const t = await call(`${TRAKT}/oauth/token`, {
       method: 'POST',
       headers: traktHeaders(),
       body: JSON.stringify({
-        refresh_token: s.trakt.refreshToken,
+        refresh_token: tr.refreshToken,
         client_id: TRAKT_ID,
         client_secret: TRAKT_SECRET,
         redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
         grant_type: 'refresh_token',
       }),
+    }).catch((err) => {
+      const r = refreshFailed('trakt', userId, err);
+      if (!r) throw err;
+      tr.reauth = r;
+      return null;
     });
+    if (!t) return;
     s.trakt = tokens(t);
     access = s.trakt.accessToken;
   });
+  if (!access) throw new NeedsReauth(reauthText('Trakt'));
   return access;
 }
 

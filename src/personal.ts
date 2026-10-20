@@ -1,5 +1,5 @@
 import { complete, parseItems, parsePicks, parseTitles } from './ai.ts';
-import { anilistUserHistory, mergeHistory, nuvioHistory, simklHistory, traktHistory, type Watch } from './history.ts';
+import { anilistUserHistory, mergeHistory, NeedsReauth, nuvioHistory, reauthText, simklHistory, traktHistory, type Watch } from './history.ts';
 import {
   animeCatalogId, animeRecommendations, anilistIdFor, cinemetaMeta, discoverPath, genreMap, isAnimeId, recommendationsPath,
   tmdbCollection, tmdbCredits, tmdbDetails, tmdbIdFor, tmdbPersonMovies, tmdbResults, tmdbSearch, toMetas, type Meta, type Type,
@@ -114,8 +114,9 @@ export async function runJob(userId: string) {
     ]);
     void count('job-ok');
   } catch (err) {
-    if (!(err instanceof SetupMissing)) void count('job-err'); // a profile without history or keys is not a Couchpilot failure
-    console.error(`job ${userId}:`, msg(err));
+    // A profile without history or keys, or with a login to renew, is not a Couchpilot failure
+    if (!(err instanceof SetupMissing || err instanceof NeedsReauth)) void count('job-err');
+    if (!(err instanceof NeedsReauth)) console.error(`job ${userId}:`, msg(err)); // re-auth is logged once when detected
     await status(`error: ${msg(err)}`);
   } finally {
     clearTimeout(timer);
@@ -131,17 +132,22 @@ async function work(userId: string, progress: (s: string) => Promise<unknown>, s
     const tmdbKey = cfg.secrets.tmdbKey;
     if (!tmdbKey) throw new SetupMissing('No TMDB key set');
 
+    // Sources whose login is dead are skipped without a call until the user reconnects them
+    const dead = [cfg.secrets.nuvio?.reauth && 'Nuvio', cfg.secrets.trakt?.reauth && 'Trakt'].filter((x): x is string => !!x);
     const sources: Promise<Watch[]>[] = [];
-    if (cfg.nuvioOwner) sources.push(nuvioHistory(cfg.nuvioOwner, cfg.settings.nuvioProfile));
-    if (cfg.secrets.trakt) sources.push(traktHistory(userId, cfg.secrets));
+    if (cfg.nuvioOwner && !cfg.secrets.nuvio?.reauth) sources.push(nuvioHistory(cfg.nuvioOwner, cfg.settings.nuvioProfile));
+    if (cfg.secrets.trakt && !cfg.secrets.trakt.reauth) sources.push(traktHistory(userId, cfg.secrets));
     if (cfg.secrets.simkl) sources.push(simklHistory(cfg.secrets));
     if (cfg.settings.anilistUser) sources.push(anilistUserHistory(cfg.settings.anilistUser, animeCatalogId));
-    if (!sources.length) throw new SetupMissing('No watch history source connected');
+    if (!sources.length) throw dead.length ? new NeedsReauth(dead.map(reauthText).join('; ')) : new SetupMissing('No watch history source connected');
     await progress('reading watch history');
     const settled = await Promise.allSettled(sources);
-    const problems = settled.flatMap((r) => (r.status === 'rejected' ? [msg(r.reason)] : []));
+    const failed = settled.flatMap((r) => (r.status === 'rejected' ? [r.reason as Error] : []));
+    const problems = [...dead.map(reauthText), ...failed.map(msg)];
     const history = mergeHistory(settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])));
-    if (!history.length) throw problems[0] ? new Error(problems[0]) : new SetupMissing('Watch history is empty');
+    // No history: a real error wins over a login to renew, so 5xx/timeouts still count as failed
+    if (!history.length)
+      throw failed.find((e) => !(e instanceof NeedsReauth)) ?? (problems.length ? new NeedsReauth(problems.join('; ')) : new SetupMissing('Watch history is empty'));
 
     const ctx: JobCtx = { userId, cfg, tmdbKey, lang: cfg.settings.language, ttl: cfg.settings.refreshHours * 3600 * 4, problems };
     const seen = [...new Set(history.flatMap((w) => [w.id, isAnimeId(w.id) ? animeCatalogId(anilistIdFor(w.id) ?? 0) : null]).filter((x): x is string => !!x))];

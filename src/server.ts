@@ -45,7 +45,7 @@ const RESOURCE_RE = new RegExp(`^\\/${TOKEN}(catalog|meta)\\/(movie|series|mixed
 async function ctxFor(token?: string): Promise<Ctx | null> {
   if (!token) return { settings: PUBLIC_SETTINGS };
   const cfg = await configByToken(token);
-  return cfg && { settings: cfg.settings, tmdbKey: cfg.secrets.tmdbKey, rpdbKey: cfg.secrets.rpdbKey, posterUrl: cfg.secrets.posterUrl, userId: cfg.userId };
+  return cfg && { settings: cfg.settings, tmdbKey: cfg.secrets.tmdbKey, rpdbKey: cfg.secrets.rpdbKey, posterUrl: cfg.secrets.posterUrl, userId: cfg.userId, reauth: !!(cfg.secrets.nuvio?.reauth || cfg.secrets.trakt?.reauth) };
 }
 
 async function addonGuard(req: Request, res: Response, next: NextFunction) {
@@ -206,9 +206,9 @@ if (operator) {
 app.get('/health', async (req, res) => {
   const list = await checks();
   const ok = list.every((c) => c.ok);
-  const [locks, days, external, requests, jobsOk, jobsErr] = ok
-    ? await Promise.all([redis.keys('pers:lock:*'), uptimeDays(), externalChecks(), counts('req'), counts('job-ok'), counts('job-err')])
-    : [[], [], [], [], [], []];
+  const [locks, days, external, requests, jobsOk, jobsErr, jobsReauth] = ok
+    ? await Promise.all([redis.keys('pers:lock:*'), uptimeDays(), externalChecks(), counts('req'), counts('job-ok'), counts('job-err'), counts('job-reauth')])
+    : [[], [], [], [], [], [], []];
   const h = {
     ok,
     version: VERSION,
@@ -217,7 +217,7 @@ app.get('/health', async (req, res) => {
     jobsRunning: locks.length,
     users: ok ? await userStats().catch(() => null) : null,
     external,
-    week: requests.map((r, i) => ({ date: r.date, requests: r.n, jobsOk: jobsOk[i]?.n ?? 0, jobsErr: jobsErr[i]?.n ?? 0 })),
+    week: requests.map((r, i) => ({ date: r.date, requests: r.n, jobsOk: jobsOk[i]?.n ?? 0, jobsErr: jobsErr[i]?.n ?? 0, jobsReauth: jobsReauth[i]?.n ?? 0 })),
     animeTitles: animeMapSize(),
     checks: list,
     days,

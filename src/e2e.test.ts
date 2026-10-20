@@ -25,6 +25,8 @@ const FIND: Record<string, object> = {
 const AGE: Record<number, string> = { 680: '16', 9000: '16', 9001: '16', 9002: '16', 9003: '16', 9004: '16' };
 const GENRES: Record<number, number[]> = { 60059: [80, 18], 680: [80], 155: [28] };
 const aiCalls: string[] = [];
+let nuvioRefresh: 'ok' | 'dead' | 'down' = 'ok'; // dead = revoked refresh token, down = Nuvio outage
+let refreshCalls = 0;
 const real = globalThis.fetch;
 globalThis.fetch = (async (input: any, init: any = {}) => {
   const u = String(input);
@@ -37,7 +39,12 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
     return J({ data: { Page: { media: genres.map((g, i) => ({ id: i + 1, format: 'TV', title: { english: 'A' + (i + 1) }, genres: g, startDate: {} })) } } });
   }
   if (u.includes('grant_type=password')) return JSON.parse(init.body).password === 'nuviopw' ? J({ access_token: 'a', refresh_token: 'r1', expires_in: 3600 }) : new Response('{}', { status: 400 });
-  if (u.includes('grant_type=refresh_token')) return J({ access_token: 'a2', refresh_token: 'r' + Date.now(), expires_in: 3600 });
+  if (u.includes('grant_type=refresh_token')) {
+    refreshCalls++;
+    if (nuvioRefresh === 'dead') return new Response('{"code":400,"error_code":"refresh_token_not_found","msg":"Invalid Refresh Token: Refresh Token Not Found"}', { status: 400 });
+    if (nuvioRefresh === 'down') return new Response('upstream error', { status: 503 });
+    return J({ access_token: 'a2', refresh_token: 'r' + Date.now(), expires_in: 3600 });
+  }
   if (u.includes('sync_pull_profiles')) return J([{ profile_index: 1, name: 'Timon' }, { profile_index: 2, name: 'Gast' }]);
   if (u.includes('sync_pull_watched_items')) {
     const p = JSON.parse(init.body).p_profile_id;
@@ -452,6 +459,54 @@ describe('Couchpilot end to end', { skip: !DB || !REDIS ? 'set TEST_DATABASE_URL
     assert.doesNotMatch(await owner.page(), /key=secret/, 'URL is masked like a key');
     const r2 = await json(`${base}/catalog/movie/trending-movie.json`);
     assert.ok(r2.metas.every((m: any) => m.poster === `https://posters.example.com/movie/${m.id}.jpg?key=secret`));
+  });
+
+  test('expired Nuvio login: counted as needs re-auth, no more calls, notice in Nuvio and config, reconnect fixes it', async () => {
+    const c = new Client();
+    await c.req('/start', {});
+    await c.req('/import', { data: JSON.stringify({ app: 'couchpilot', version: 1, settings: {}, keys: { tmdbKey: TMDB_KEY } }) });
+    assert.equal((await c.req('/connect/nuvio', { email: 'x@y.z', password: 'nuviopw' })).status, 303);
+    await jobsDone(c);
+    const today = async () => {
+      await new Promise((r) => setTimeout(r, 100)); // counters are written in the background
+      return (await json(B + '/health')).week.at(-1);
+    };
+    const recompute = async () => {
+      for (const k of await store.redis.keys('nuvio:at:*')) await store.redis.del(k); // force a token refresh
+      await c.req('/refresh', {});
+      await new Promise((r) => setTimeout(r, 100));
+      return (await jobsDone(c)).jobs[0];
+    };
+    const catalog = async () => json(installUrl(await c.page()).replace('manifest.json', 'catalog/movie/foryou-movie.json'));
+    const t0 = await today();
+
+    nuvioRefresh = 'dead';
+    assert.match((await recompute()).text, /Nuvio needs to be reconnected/);
+    let t = await today();
+    assert.equal(t.jobsReauth, t0.jobsReauth + 1, 'counted as needs re-auth');
+    assert.equal(t.jobsErr, t0.jobsErr, 'not counted as failed');
+    const calls = refreshCalls;
+    await recompute();
+    assert.equal(refreshCalls, calls, 'dead login is not asked again');
+    assert.equal((await today()).jobsReauth, t0.jobsReauth + 1, 'counted once, not per skipped run');
+    assert.match(await c.page(), /class="note warn"/, 'banner on the config page');
+    assert.equal((await catalog()).metas[0].id, 'couchpilot:reauth', 'notice tile in Nuvio');
+    assert.equal((await json(installUrl(await c.page()).replace('manifest.json', 'meta/movie/couchpilot:reauth.json'))).meta.name, 'Couchpilot: please reconnect');
+
+    nuvioRefresh = 'ok';
+    assert.equal((await c.req('/connect/nuvio', { email: 'x@y.z', password: 'nuviopw' })).status, 303);
+    assert.equal((await recompute()).state, 'done', 'reconnect clears it');
+    assert.doesNotMatch(await c.page(), /class="note warn"/);
+    assert.ok(!(await catalog()).metas.some((m: any) => m.id === 'couchpilot:reauth'));
+
+    nuvioRefresh = 'down';
+    t = await today();
+    assert.equal((await recompute()).state, 'error');
+    const t2 = await today();
+    assert.equal(t2.jobsErr, t.jobsErr + 1, 'Nuvio outage still counts as failed');
+    assert.equal(t2.jobsReauth, t.jobsReauth);
+    assert.doesNotMatch(await c.page(), /class="note warn"/, 'an outage is not a dead login');
+    nuvioRefresh = 'ok';
   });
 
   test('no-setup install: Cinemeta-like rows plus anime, no account or key', async () => {

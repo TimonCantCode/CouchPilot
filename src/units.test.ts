@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { freshness, shuffleMetas, animeKidsOk, defaultName, discover, GEMS_PATHS, isOn, SHORT_PATH, LIKE, mixUp, pickGenres, orderedRowIds, ROWS, season } from './addon.ts';
 import { parseItems } from './ai.ts';
+import { authError, isReauth } from './history.ts';
 import { ageFrom, trailerFrom } from './sources.ts';
 import { DEFAULT_SETTINGS } from './store.ts';
 
@@ -174,4 +175,16 @@ test('freshness boost: newer releases come first more often', () => {
   for (let i = 0; i < 100; i++) fresh += mixUp(metas, `s${i}`, 0, (m) => freshness(m, 2026)).slice(0, 10).filter((m) => m.releaseInfo === '2026').length;
   assert.ok(fresh / 100 > 6.5, `new titles dominate the top 10 (avg ${fresh / 100})`);
   assert.ok(fresh / 100 < 10, 'but not always');
+});
+
+test('token refresh errors: only known auth codes need a new login', () => {
+  const e = (status: number | undefined, body?: string) => isReauth(authError({ status, body }));
+  assert.ok(e(400, '{"code":400,"error_code":"refresh_token_not_found","msg":"Invalid Refresh Token: Refresh Token Not Found"}'));
+  assert.ok(e(400, '{"error":"invalid_grant","error_description":"Invalid Refresh Token"}'));
+  assert.ok(e(401, '{"error":"invalid_grant"}'));
+  assert.ok(!e(400, '{"error_code":"validation_failed"}')); // unknown 400 stays a real error
+  assert.ok(!e(400, 'not json'));
+  assert.ok(!e(500, '{"error_code":"refresh_token_not_found"}'));
+  assert.ok(!e(undefined)); // network error / timeout
+  assert.deepEqual(authError({ status: 400, body: '{"error_code":"x","msg":"m","access_token":"secret"}' }), { status: 400, code: 'x', text: 'm' });
 });
